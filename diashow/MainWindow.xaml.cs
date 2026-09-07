@@ -11,9 +11,11 @@ namespace diashow;
 public partial class MainWindow : Window
 {
     private readonly AppSettings _settings = AppSettings.Load();
+    private readonly ImagePreloader _imagePreloader = new();
     private readonly DispatcherTimer _controlsTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private Playlist? _playlist;
     private CancellationTokenSource? _playbackCancellation;
+    private CancellationTokenSource? _scanCancellation;
     private string? _requestedPath;
     private bool _paused;
     private bool _currentVideoAudible;
@@ -37,7 +39,7 @@ public partial class MainWindow : Window
             ShowMessage("Choose a folder to start a slideshow.");
             return;
         }
-        LoadFolder(input.Value.Folder, input.Value.StartFile);
+        _ = LoadFolderAsync(input.Value.Folder, input.Value.StartFile);
     }
 
     private static (string Folder, string? StartFile)? ResolveInput(string? argument)
@@ -52,23 +54,58 @@ public partial class MainWindow : Window
             ? (lastFolder, null) : null;
     }
 
-    private void LoadFolder(string folder, string? startFile)
+    private async Task LoadFolderAsync(string folder, string? startFile)
     {
+        _scanCancellation?.Cancel();
+        _scanCancellation = new CancellationTokenSource();
         _settings.LastFolder = folder;
         _settings.Save();
-        var items = MediaDiscovery.Find(folder);
-        _playlist = new Playlist(items, _settings.Order, _settings.IncludeVideos);
-        var first = _playlist.StartAt(startFile);
-        if (first is null)
+        StatusText.Text = "Scanning folder...";
+        _playlist = new Playlist([], _settings.Order, _settings.IncludeVideos);
+        var reader = MediaDiscovery.Stream(folder, _scanCancellation.Token);
+        var pending = new List<MediaItem>();
+        var started = false;
+
+        await foreach (var item in reader.ReadAllAsync())
         {
-            ShowMessage("No playable media was found in this folder.");
-            return;
+            pending.Add(item);
+            var isRequestedItem = startFile is not null &&
+                string.Equals(item.Path, startFile, StringComparison.OrdinalIgnoreCase);
+            if (!started && (startFile is null || isRequestedItem))
+            {
+                _playlist.AddItems(pending);
+                pending.Clear();
+                var first = startFile is null ? _playlist.Next() : _playlist.StartAt(startFile);
+                if (first is not null)
+                {
+                    started = true;
+                    EmptyState.Visibility = Visibility.Collapsed;
+                    ShowItem(first);
+                }
+            }
+            else if (started && pending.Count >= 1)
+            {
+                _playlist.AddItems(pending);
+                pending.Clear();
+            }
         }
-        EmptyState.Visibility = Visibility.Collapsed;
-        ShowItem(first);
+
+        if (pending.Count > 0)
+            _playlist.AddItems(pending);
+        if (!started)
+        {
+            var first = startFile is null ? _playlist.Next() : _playlist.StartAt(startFile);
+            if (first is not null)
+            {
+                EmptyState.Visibility = Visibility.Collapsed;
+                ShowItem(first);
+            }
+            else
+                ShowMessage("No playable media was found in this folder.");
+        }
     }
 
-    private void ShowItem(MediaItem item)
+    private async void ShowItem(MediaItem item)
     {
         _playbackCancellation?.Cancel();
         _playbackCancellation = new CancellationTokenSource();
@@ -81,20 +118,25 @@ public partial class MainWindow : Window
             VideoView.Visibility = Visibility.Collapsed;
             try
             {
-                var image = new BitmapImage();
-                image.BeginInit();
-                image.UriSource = new Uri(item.Path);
-                image.CacheOption = BitmapCacheOption.OnLoad;
-                image.EndInit();
+                var image = await _imagePreloader.GetAsync(item.Path, _playbackCancellation.Token);
+                if (image is null)
+                    throw new NotSupportedException();
+                if (_playbackCancellation.IsCancellationRequested)
+                    return;
                 ImageView.Source = image;
                 ImageView.Visibility = Visibility.Visible;
                 AnimateTransition(ImageView);
                 _ = WaitThenNext(_playbackCancellation.Token);
+                PreloadUpcoming();
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
+                or ArgumentException or InvalidOperationException or FileFormatException)
             {
                 ShowMessage($"Skipped unreadable file: {Path.GetFileName(item.Path)}");
                 GoNext();
+            }
+            catch (OperationCanceledException)
+            {
             }
         }
         else
@@ -105,9 +147,16 @@ public partial class MainWindow : Window
             VideoView.Volume = 0;
             VideoView.Play();
             AnimateTransition(VideoView);
+            PreloadUpcoming();
         }
         PauseButton.Content = "Pause";
         _paused = false;
+    }
+
+    private void PreloadUpcoming()
+    {
+        if (_settings.PreloadEnabled && _playlist is not null)
+            _imagePreloader.Preload(_playlist.PreloadCandidates(_settings.PreloadCount));
     }
 
     private async Task WaitThenNext(CancellationToken token)
@@ -178,6 +227,7 @@ public partial class MainWindow : Window
         FadeBox.Text = _settings.FadeDurationSeconds.ToString("0.##");
         OrderBox.SelectedIndex = _settings.Order == PlaybackOrder.Random ? 1 : 0;
         TransitionBox.SelectedIndex = _settings.Transition == TransitionMode.Fade ? 1 : 0;
+        PreloadBox.IsChecked = _settings.PreloadEnabled;
         VideoToggle.Content = $"Videos: {(_settings.IncludeVideos ? "on" : "off")}";
     }
 
@@ -238,6 +288,7 @@ public partial class MainWindow : Window
             _settings.FadeDurationSeconds = Math.Clamp(fade, 0.05, 10);
         _settings.Order = OrderBox.SelectedIndex == 1 ? PlaybackOrder.Random : PlaybackOrder.Filename;
         _settings.Transition = TransitionBox.SelectedIndex == 1 ? TransitionMode.Fade : TransitionMode.Instant;
+        _settings.PreloadEnabled = PreloadBox.IsChecked == true;
         _settings.Save();
         _playlist?.SetOptions(_settings.Order, _settings.IncludeVideos);
         SettingsPanel.Visibility = Visibility.Collapsed;
@@ -253,14 +304,16 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == Forms.DialogResult.OK)
         {
             SettingsPanel.Visibility = Visibility.Collapsed;
-            LoadFolder(dialog.SelectedPath, null);
+            _ = LoadFolderAsync(dialog.SelectedPath, null);
         }
     }
 
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         _playbackCancellation?.Cancel();
+        _scanCancellation?.Cancel();
         VideoView.Stop();
+        _imagePreloader.Dispose();
         _settings.Save();
     }
 }

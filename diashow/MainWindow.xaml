@@ -55,6 +55,8 @@
                 </ComboBox>
                 <TextBlock Text="Fade duration (seconds)" Foreground="White"/>
                 <TextBox x:Name="FadeBox" Margin="0,4,0,18"/>
+                <CheckBox x:Name="PreloadBox" Content="Preload upcoming images"
+                          Foreground="White" Margin="0,0,0,8"/>
                 <Button Content="Choose folder..." Click="ChooseFolder_Click" Margin="0,0,0,8"/>
                 <Button Content="Save and close" Click="SaveSettings_Click"/>
             </StackPanel>
