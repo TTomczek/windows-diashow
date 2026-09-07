@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _playbackCancellation;
     private CancellationTokenSource? _scanCancellation;
     private string? _requestedPath;
+    private string? _rootFolder;
     private bool _paused;
     private bool _currentVideoAudible;
 
@@ -57,17 +58,25 @@ public partial class MainWindow : Window
     private async Task LoadFolderAsync(string folder, string? startFile)
     {
         _scanCancellation?.Cancel();
-        _scanCancellation = new CancellationTokenSource();
+        _playbackCancellation?.Cancel();
+        var scanCancellation = new CancellationTokenSource();
+        _scanCancellation = scanCancellation;
         _settings.LastFolder = folder;
+        _rootFolder = folder;
         _settings.Save();
         StatusText.Text = "Scanning folder...";
         _playlist = new Playlist([], _settings.Order, _settings.IncludeVideos);
-        var reader = MediaDiscovery.Stream(folder, _scanCancellation.Token);
+        ImageView.Source = null;
+        VideoView.Stop();
+        VideoView.Source = null;
+        var reader = MediaDiscovery.Stream(folder, scanCancellation.Token);
         var pending = new List<MediaItem>();
         var started = false;
 
         await foreach (var item in reader.ReadAllAsync())
         {
+            if (scanCancellation.IsCancellationRequested)
+                return;
             pending.Add(item);
             var isRequestedItem = startFile is not null &&
                 string.Equals(item.Path, startFile, StringComparison.OrdinalIgnoreCase);
@@ -90,6 +99,8 @@ public partial class MainWindow : Window
             }
         }
 
+        if (scanCancellation.IsCancellationRequested)
+            return;
         if (pending.Count > 0)
             _playlist.AddItems(pending);
         if (!started)
@@ -111,6 +122,8 @@ public partial class MainWindow : Window
         _playbackCancellation = new CancellationTokenSource();
         _currentVideoAudible = false;
         AudioButton.Content = "Unmute";
+        var relativePath = _rootFolder is null ? item.Path : Path.GetRelativePath(_rootFolder, item.Path);
+        PathBanner.Text = relativePath;
         StatusText.Text = $"{Path.GetFileName(item.Path)}  •  {(_playlist?.CanGoBack == true ? "previous available" : "first item")}";
         if (item.Kind == MediaKind.Image)
         {
@@ -282,6 +295,16 @@ public partial class MainWindow : Window
 
     private void SaveSettings_Click(object sender, RoutedEventArgs e)
     {
+        SettingsPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void SettingsControl_Changed(object sender, RoutedEventArgs e)
+    {
+        SaveSettingsFromUi();
+    }
+
+    private void SaveSettingsFromUi()
+    {
         if (double.TryParse(DurationBox.Text, out var duration))
             _settings.ImageDurationSeconds = Math.Clamp(duration, 1, 3600);
         if (double.TryParse(FadeBox.Text, out var fade))
@@ -291,7 +314,6 @@ public partial class MainWindow : Window
         _settings.PreloadEnabled = PreloadBox.IsChecked == true;
         _settings.Save();
         _playlist?.SetOptions(_settings.Order, _settings.IncludeVideos);
-        SettingsPanel.Visibility = Visibility.Collapsed;
     }
 
     private void ChooseFolder_Click(object sender, RoutedEventArgs e)

@@ -16,6 +16,11 @@
             <Button Content="Choose folder..." Click="ChooseFolder_Click"
                     HorizontalAlignment="Center" Padding="16,7"/>
         </StackPanel>
+        <Border Background="#66000000" Padding="14,9"
+                HorizontalAlignment="Stretch" VerticalAlignment="Top">
+            <TextBlock x:Name="PathBanner" Foreground="White" FontSize="16"
+                       TextTrimming="CharacterEllipsis"/>
+        </Border>
 
         <Border x:Name="Controls" Background="#CC17171C" Padding="14"
                 VerticalAlignment="Bottom" Opacity="0">
@@ -42,23 +47,24 @@
             <StackPanel>
                 <TextBlock Text="Settings" Foreground="White" FontSize="22" Margin="0,0,0,16"/>
                 <TextBlock Text="Image duration (seconds)" Foreground="White"/>
-                <TextBox x:Name="DurationBox" Margin="0,4,0,12"/>
+                <TextBox x:Name="DurationBox" Margin="0,4,0,12" TextChanged="SettingsControl_Changed"/>
                 <TextBlock Text="Playback order" Foreground="White"/>
-                <ComboBox x:Name="OrderBox" Margin="0,4,0,12">
+                <ComboBox x:Name="OrderBox" Margin="0,4,0,12" SelectionChanged="SettingsControl_Changed">
                     <ComboBoxItem Content="Filename order"/>
                     <ComboBoxItem Content="Random shuffle"/>
                 </ComboBox>
                 <TextBlock Text="Transition" Foreground="White"/>
-                <ComboBox x:Name="TransitionBox" Margin="0,4,0,12">
+                <ComboBox x:Name="TransitionBox" Margin="0,4,0,12" SelectionChanged="SettingsControl_Changed">
                     <ComboBoxItem Content="Instant switch"/>
                     <ComboBoxItem Content="Simple fade"/>
                 </ComboBox>
                 <TextBlock Text="Fade duration (seconds)" Foreground="White"/>
-                <TextBox x:Name="FadeBox" Margin="0,4,0,18"/>
+                <TextBox x:Name="FadeBox" Margin="0,4,0,18" TextChanged="SettingsControl_Changed"/>
                 <CheckBox x:Name="PreloadBox" Content="Preload upcoming images"
-                          Foreground="White" Margin="0,0,0,8"/>
+                          Foreground="White" Margin="0,0,0,8"
+                          Checked="SettingsControl_Changed" Unchecked="SettingsControl_Changed"/>
                 <Button Content="Choose folder..." Click="ChooseFolder_Click" Margin="0,0,0,8"/>
-                <Button Content="Save and close" Click="SaveSettings_Click"/>
+                <Button Content="Close" Click="SaveSettings_Click"/>
             </StackPanel>
         </Border>
     </Grid>
