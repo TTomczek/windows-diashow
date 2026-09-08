@@ -90,6 +90,7 @@ public partial class MainWindow : Window
             {
                 _playlist.AddItems(pending);
                 pending.Clear();
+                UpdateItemCounter();
                 var first = startFile is null ? _playlist.StartAt(item.Path) : _playlist.StartAt(startFile);
                 if (first is not null)
                 {
@@ -102,13 +103,17 @@ public partial class MainWindow : Window
             {
                 _playlist.AddItems(pending);
                 pending.Clear();
+                UpdateItemCounter();
             }
         }
 
         if (scanCancellation.IsCancellationRequested)
             return;
         if (pending.Count > 0)
+        {
             _playlist.AddItems(pending);
+            UpdateItemCounter();
+        }
         if (!started)
         {
             var first = startFile is null ? _playlist.StartRandom() : _playlist.StartAt(startFile);
@@ -131,6 +136,7 @@ public partial class MainWindow : Window
         SetButtonIcon(AudioButton, "\uE767", "Unmute");
         var relativePath = _rootFolder is null ? item.Path : Path.GetRelativePath(_rootFolder, item.Path);
         PathBanner.Text = relativePath;
+        UpdateItemCounter();
         if (item.Kind == MediaKind.Image)
         {
             VideoView.Stop();
@@ -376,6 +382,7 @@ public partial class MainWindow : Window
         _settings.Save();
         UpdateVideoToggle();
         _playlist?.SetOptions(_settings.Order, _settings.IncludeVideos);
+        UpdateItemCounter();
         if (!_settings.IncludeVideos && _playlist?.Current?.Kind == MediaKind.Video) GoNext();
     }
 
@@ -399,6 +406,17 @@ public partial class MainWindow : Window
     {
         EmptyMessage.Text = message;
         EmptyState.Visibility = Visibility.Visible;
+    }
+
+    private void UpdateItemCounter()
+    {
+        if (_playlist is null)
+        {
+            ItemCounter.Text = string.Empty;
+            return;
+        }
+
+        ItemCounter.Text = $"{_playlist.CurrentPosition} / {_playlist.TotalCount}";
     }
 
     private void ApplySettingsToUi()

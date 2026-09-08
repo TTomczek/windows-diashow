@@ -58,8 +58,16 @@
         </StackPanel>
         <Border Background="#66000000" Padding="16,10"
                 HorizontalAlignment="Stretch" VerticalAlignment="Top">
-            <TextBlock x:Name="PathBanner" Foreground="White" FontSize="16"
-                       TextTrimming="CharacterEllipsis"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="ItemCounter" Foreground="White" FontSize="16"
+                           Margin="0,0,12,0"/>
+                <TextBlock x:Name="PathBanner" Grid.Column="1" Foreground="White" FontSize="16"
+                           TextTrimming="CharacterEllipsis"/>
+            </Grid>
         </Border>
 
         <Border x:Name="Controls" Background="#CC17171C" Padding="14"
