@@ -48,6 +48,7 @@
         <Image x:Name="ImageView" Stretch="Uniform" Visibility="Collapsed"/>
         <MediaElement x:Name="VideoView" Stretch="Uniform" Visibility="Collapsed"
                       LoadedBehavior="Manual" UnloadedBehavior="Manual"
+                      MediaOpened="VideoView_MediaOpened"
                       MediaEnded="VideoView_MediaEnded" MediaFailed="VideoView_MediaFailed"/>
         <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center"
                     Visibility="Collapsed">
@@ -73,7 +74,17 @@
         <Border x:Name="Controls" Background="#CC17171C" Padding="14"
                 VerticalAlignment="Bottom" Opacity="0">
             <Grid>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Slider x:Name="VideoProgress" Grid.Row="0" Height="24" Margin="0,0,0,8"
+                        Minimum="0" Maximum="1" SmallChange="10" LargeChange="10"
+                        Visibility="Collapsed" IsTabStop="True"
+                        ToolTip="Video position"
+                        ValueChanged="VideoProgress_ValueChanged"
+                        PreviewKeyDown="VideoProgress_PreviewKeyDown"/>
+                <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
                     <Button Style="{StaticResource IconButton}" Content="&#xE100;" FontFamily="Segoe MDL2 Assets" ToolTip="Previous"
                             Click="Previous_Click"/>
                     <Button x:Name="PauseButton" Style="{StaticResource IconButton}" Content="&#xE769;" FontFamily="Segoe MDL2 Assets"
@@ -85,7 +96,7 @@
                     <Button Style="{StaticResource IconButton}" Content="&#xE740;" FontFamily="Segoe MDL2 Assets" ToolTip="Fullscreen"
                             Click="Fullscreen_Click"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="VideoToggle" Style="{StaticResource CompactIconButton}" Content="&#xE714;"
                             FontFamily="Segoe MDL2 Assets" ToolTip="Toggle videos" Click="VideoToggle_Click"/>
                     <Button Style="{StaticResource CompactIconButton}" Content="&#xE713;"

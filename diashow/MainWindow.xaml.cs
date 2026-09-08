@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly ImagePreloader _imagePreloader = new();
     private readonly DispatcherTimer _controlsTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly DispatcherTimer _videoProgressTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private Playlist? _playlist;
     private CancellationTokenSource? _playbackCancellation;
     private CancellationTokenSource? _scanCancellation;
@@ -41,6 +42,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         _requestedPath = args.FirstOrDefault();
         _controlsTimer.Tick += (_, _) => Controls.Opacity = 0;
+        _videoProgressTimer.Tick += (_, _) => UpdateVideoProgress();
         VideoView.Volume = 0;
         ExplorerIntegration.Install();
         ApplySettingsToUi();
@@ -81,6 +83,7 @@ public partial class MainWindow : Window
         _settings.Save();
         _playlist = new Playlist([], _settings.Order, _settings.IncludeVideos);
         ImageView.Source = null;
+        StopVideoProgress();
         VideoView.Stop();
         VideoView.Source = null;
         var reader = MediaDiscovery.Stream(folder, scanCancellation.Token, startFile is null);
@@ -150,6 +153,7 @@ public partial class MainWindow : Window
         {
             VideoView.Stop();
             VideoView.Visibility = Visibility.Collapsed;
+            StopVideoProgress();
             try
             {
                 if (string.Equals(Path.GetExtension(item.Path), ".gif", StringComparison.OrdinalIgnoreCase))
@@ -197,6 +201,7 @@ public partial class MainWindow : Window
         {
             ImageView.Visibility = Visibility.Collapsed;
             VideoView.Visibility = Visibility.Visible;
+            StopVideoProgress();
             VideoView.Source = new Uri(item.Path);
             VideoView.Volume = 0;
             VideoView.Play();
@@ -474,10 +479,63 @@ public partial class MainWindow : Window
 
     private void VideoView_MediaEnded(object sender, RoutedEventArgs e) => GoNext();
 
+    private void VideoView_MediaOpened(object sender, RoutedEventArgs e)
+    {
+        if (!VideoView.NaturalDuration.HasTimeSpan)
+            return;
+
+        VideoProgress.Maximum = VideoView.NaturalDuration.TimeSpan.TotalSeconds;
+        VideoProgress.Value = 0;
+        VideoProgress.Visibility = Visibility.Visible;
+        _videoProgressTimer.Start();
+    }
+
     private void VideoView_MediaFailed(object sender, ExceptionRoutedEventArgs e)
     {
+        StopVideoProgress();
         ShowMessage($"Skipped unreadable file: {Path.GetFileName(VideoView.Source?.LocalPath)}");
         GoNext();
+    }
+
+    private void VideoProgress_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (VideoProgress.Visibility != Visibility.Visible ||
+            VideoView.Visibility != Visibility.Visible ||
+            VideoView.Source is null ||
+            !VideoView.NaturalDuration.HasTimeSpan)
+            return;
+
+        VideoView.Position = TimeSpan.FromSeconds(e.NewValue);
+    }
+
+    private void VideoProgress_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Left or Key.Right) ||
+            !VideoView.NaturalDuration.HasTimeSpan)
+            return;
+
+        var offset = e.Key == Key.Right ? 10 : -10;
+        VideoProgress.Value = Math.Clamp(VideoProgress.Value + offset, 0, VideoProgress.Maximum);
+        e.Handled = true;
+    }
+
+    private void UpdateVideoProgress()
+    {
+        if (VideoView.Visibility != Visibility.Visible ||
+            VideoProgress.Visibility != Visibility.Visible ||
+            VideoProgress.IsMouseCaptureWithin ||
+            VideoProgress.IsKeyboardFocusWithin)
+            return;
+
+        VideoProgress.Value = Math.Clamp(VideoView.Position.TotalSeconds, 0, VideoProgress.Maximum);
+    }
+
+    private void StopVideoProgress()
+    {
+        _videoProgressTimer.Stop();
+        VideoProgress.Visibility = Visibility.Collapsed;
+        VideoProgress.Value = 0;
+        VideoProgress.Maximum = 1;
     }
 
     private void Pause_Click(object sender, RoutedEventArgs e) => TogglePause();
@@ -557,6 +615,7 @@ public partial class MainWindow : Window
         _playbackCancellation?.Cancel();
         _scanCancellation?.Cancel();
         StopGif();
+        StopVideoProgress();
         VideoView.Stop();
         _imagePreloader.Dispose();
         _settings.Save();
