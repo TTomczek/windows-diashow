@@ -1,15 +1,23 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Button = System.Windows.Controls.Button;
+using Color = System.Windows.Media.Color;
+using FontFamily = System.Windows.Media.FontFamily;
 using Forms = System.Windows.Forms;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 
 namespace diashow;
 
 public partial class MainWindow : Window
 {
+    private const int DiscoveryBatchThreshold = 2000;
+    private const int DiscoveryBatchSize = 512;
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly ImagePreloader _imagePreloader = new();
     private readonly DispatcherTimer _controlsTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -99,7 +107,8 @@ public partial class MainWindow : Window
                     ShowItem(first);
                 }
             }
-            else if (started && pending.Count >= 1)
+            else if (started && pending.Count >=
+                (_playlist.TotalCount >= DiscoveryBatchThreshold ? DiscoveryBatchSize : 1))
             {
                 _playlist.AddItems(pending);
                 pending.Clear();
@@ -437,17 +446,17 @@ public partial class MainWindow : Window
         VideoToggle.Opacity = 1;
         VideoToggle.Background = _settings.IncludeVideos
             ? new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF))
-            : new SolidColorBrush(Color.FromArgb(66, 0x18, 0x18, 0x20));
+            : new SolidColorBrush(Color.FromArgb(0x66, 0x18, 0x18, 0x20));
     }
 
-    private void Window_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    private void Window_MouseMove(object sender, MouseEventArgs e)
     {
         Controls.Opacity = 1;
         _controlsTimer.Stop();
         _controlsTimer.Start();
     }
 
-    private void Window_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         switch (e.Key)
         {
@@ -490,10 +499,10 @@ public partial class MainWindow : Window
         SettingsPanel.Visibility = SettingsPanel.Visibility == Visibility.Visible
             ? Visibility.Collapsed : Visibility.Visible;
 
-    private static void SetButtonIcon(System.Windows.Controls.Button button, string glyph, string tooltip)
+    private static void SetButtonIcon(Button button, string glyph, string tooltip)
     {
         button.Content = glyph;
-        button.FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets");
+        button.FontFamily = new FontFamily("Segoe MDL2 Assets");
         button.ToolTip = tooltip;
     }
 
@@ -531,7 +540,7 @@ public partial class MainWindow : Window
 
     private void ChooseFolder_Click(object sender, RoutedEventArgs e)
     {
-        using var dialog = new Forms.FolderBrowserDialog
+        using var dialog = new FolderBrowserDialog
         {
             Description = "Choose a folder for the slideshow",
             SelectedPath = _settings.LastFolder ?? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
@@ -543,7 +552,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    private void Window_Closing(object? sender, CancelEventArgs e)
     {
         _playbackCancellation?.Cancel();
         _scanCancellation?.Cancel();
