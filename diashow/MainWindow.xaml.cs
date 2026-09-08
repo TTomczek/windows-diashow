@@ -470,6 +470,7 @@ public partial class MainWindow : Window
             case Key.Left: GoPrevious(); break;
             case Key.F: SetFullscreen(WindowStyle != WindowStyle.None); break;
             case Key.V: ToggleVideos(); break;
+            case Key.M: ToggleAudio(); break;
             case Key.Escape:
                 if (SettingsPanel.Visibility == Visibility.Visible) SettingsPanel.Visibility = Visibility.Collapsed;
                 else if (WindowStyle == WindowStyle.None) SetFullscreen(false);
@@ -544,7 +545,9 @@ public partial class MainWindow : Window
     private void VideoToggle_Click(object sender, RoutedEventArgs e) => ToggleVideos();
     private void Fullscreen_Click(object sender, RoutedEventArgs e) => SetFullscreen(WindowStyle != WindowStyle.None);
 
-    private void Audio_Click(object sender, RoutedEventArgs e)
+    private void Audio_Click(object sender, RoutedEventArgs e) => ToggleAudio();
+
+    private void ToggleAudio()
     {
         if (VideoView.Visibility != Visibility.Visible) return;
         _currentVideoAudible = !_currentVideoAudible;

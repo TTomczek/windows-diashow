@@ -129,6 +129,36 @@
                 <CheckBox x:Name="PreloadBox" Content="Preload upcoming images"
                           Foreground="White" Margin="0,0,0,8"
                           Checked="SettingsControl_Changed" Unchecked="SettingsControl_Changed"/>
+                <TextBlock Text="Keyboard shortcuts" Foreground="White" FontSize="18"
+                           Margin="0,8,0,8"/>
+                <Grid Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Space" Foreground="White" Margin="0,2,16,2"/>
+                    <TextBlock Grid.Column="1" Text="Pause or resume" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock Grid.Row="1" Text="Left / Right" Foreground="White" Margin="0,2,16,2"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="Previous / next item" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock Grid.Row="2" Text="Slider arrows" Foreground="White" Margin="0,2,16,2"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="Seek 10 seconds" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock Grid.Row="3" Text="F" Foreground="White" Margin="0,2,16,2"/>
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="Toggle fullscreen" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock Grid.Row="4" Text="V" Foreground="White" Margin="0,2,16,2"/>
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="Toggle videos" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock Grid.Row="5" Text="M" Foreground="White" Margin="0,2,16,2"/>
+                    <TextBlock Grid.Row="5" Grid.Column="1" Text="Mute or unmute video" Foreground="#FFCCCCCC" Margin="0,2"/>
+                </Grid>
+                <TextBlock Text="Escape - Close settings or exit fullscreen" Foreground="#FFCCCCCC"
+                       Margin="0,0,0,16"/>
                 <Button Content="Choose folder..." Click="ChooseFolder_Click" Margin="0,0,0,8"/>
                 <Button Content="Close" Click="SaveSettings_Click"/>
             </StackPanel>
