@@ -75,7 +75,7 @@ public partial class MainWindow : Window
         ImageView.Source = null;
         VideoView.Stop();
         VideoView.Source = null;
-        var reader = MediaDiscovery.Stream(folder, scanCancellation.Token);
+        var reader = MediaDiscovery.Stream(folder, scanCancellation.Token, startFile is null);
         var pending = new List<MediaItem>();
         var started = false;
 
@@ -86,11 +86,11 @@ public partial class MainWindow : Window
             pending.Add(item);
             var isRequestedItem = startFile is not null &&
                 string.Equals(item.Path, startFile, StringComparison.OrdinalIgnoreCase);
-            if (!started && startFile is not null && isRequestedItem)
+            if (!started && (startFile is null || isRequestedItem))
             {
                 _playlist.AddItems(pending);
                 pending.Clear();
-                var first = _playlist.StartAt(startFile);
+                var first = startFile is null ? _playlist.StartAt(item.Path) : _playlist.StartAt(startFile);
                 if (first is not null)
                 {
                     started = true;

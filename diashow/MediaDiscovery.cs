@@ -5,7 +5,10 @@ namespace diashow;
 
 public static class MediaDiscovery
 {
-    public static ChannelReader<MediaItem> Stream(string folder, CancellationToken cancellationToken = default)
+    public static ChannelReader<MediaItem> Stream(
+        string folder,
+        CancellationToken cancellationToken = default,
+        bool randomize = false)
     {
         var channel = Channel.CreateUnbounded<MediaItem>(new UnboundedChannelOptions
         {
@@ -20,7 +23,17 @@ public static class MediaDiscovery
                 if (!Directory.Exists(folder))
                     return;
 
-                foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+                var paths = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).ToList();
+                if (randomize)
+                {
+                    for (var i = paths.Count - 1; i > 0; i--)
+                    {
+                        var j = Random.Shared.Next(i + 1);
+                        (paths[i], paths[j]) = (paths[j], paths[i]);
+                    }
+                }
+
+                foreach (var path in paths)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var kind = await Task.Run(() => TryImage(path), cancellationToken);
