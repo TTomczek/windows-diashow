@@ -135,7 +135,7 @@ public partial class MainWindow : Window
         _currentVideoAudible = false;
         SetButtonIcon(AudioButton, "\uE767", "Unmute");
         var relativePath = _rootFolder is null ? item.Path : Path.GetRelativePath(_rootFolder, item.Path);
-        PathBanner.Text = relativePath;
+        PathBanner.Text = relativePath.Replace('\\', '/').Replace("/", " / ");
         UpdateItemCounter();
         if (item.Kind == MediaKind.Image)
         {
@@ -436,8 +436,8 @@ public partial class MainWindow : Window
             : "Videos disabled - click to enable";
         VideoToggle.Opacity = 1;
         VideoToggle.Background = _settings.IncludeVideos
-            ? new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF))
-            : new SolidColorBrush(System.Windows.Media.Color.FromArgb(0xAA, 0x18, 0x18, 0x20));
+            ? new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF))
+            : new SolidColorBrush(Color.FromArgb(66, 0x18, 0x18, 0x20));
     }
 
     private void Window_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
