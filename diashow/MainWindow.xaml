@@ -5,6 +5,46 @@
         KeyDown="Window_KeyDown" MouseMove="Window_MouseMove"
         Loaded="Window_Loaded" Closing="Window_Closing">
     <Grid x:Name="Root">
+        <Grid.Resources>
+            <Style x:Key="IconButton" TargetType="Button">
+                <Setter Property="Width" Value="52"/>
+                <Setter Property="Height" Value="52"/>
+                <Setter Property="Margin" Value="5"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="FontSize" Value="22"/>
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="Background" Value="#33FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#55FFFFFF"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="12">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#66FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Background" Value="#99FFFFFF"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="CompactIconButton" BasedOn="{StaticResource IconButton}" TargetType="Button">
+                <Setter Property="Width" Value="38"/>
+                <Setter Property="Height" Value="38"/>
+                <Setter Property="FontSize" Value="17"/>
+                <Setter Property="Margin" Value="3"/>
+            </Style>
+        </Grid.Resources>
         <Image x:Name="ImageView" Stretch="Uniform" Visibility="Collapsed"/>
         <MediaElement x:Name="VideoView" Stretch="Uniform" Visibility="Collapsed"
                       LoadedBehavior="Manual" UnloadedBehavior="Manual"
@@ -16,7 +56,7 @@
             <Button Content="Choose folder..." Click="ChooseFolder_Click"
                     HorizontalAlignment="Center" Padding="16,7"/>
         </StackPanel>
-        <Border Background="#66000000" Padding="14,9"
+        <Border Background="#66000000" Padding="16,10"
                 HorizontalAlignment="Stretch" VerticalAlignment="Top">
             <TextBlock x:Name="PathBanner" Foreground="White" FontSize="16"
                        TextTrimming="CharacterEllipsis"/>
@@ -24,21 +64,26 @@
 
         <Border x:Name="Controls" Background="#CC17171C" Padding="14"
                 VerticalAlignment="Bottom" Opacity="0">
-            <StackPanel>
-                <DockPanel Margin="0,0,0,8">
-                    <TextBlock x:Name="StatusText" Foreground="#D8D8E0" VerticalAlignment="Center"/>
-                    <Button Content="Settings" Click="Settings_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/>
-                    <Button x:Name="VideoToggle" Content="Videos: on" Click="VideoToggle_Click"
-                            DockPanel.Dock="Right" Margin="8,0,0,0"/>
-                </DockPanel>
+            <Grid>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                    <Button Content="Previous" Click="Previous_Click" Margin="4" Padding="14,6"/>
-                    <Button x:Name="PauseButton" Content="Pause" Click="Pause_Click" Margin="4" Padding="14,6"/>
-                    <Button Content="Next" Click="Next_Click" Margin="4" Padding="14,6"/>
-                    <Button x:Name="AudioButton" Content="Unmute" Click="Audio_Click" Margin="4" Padding="14,6"/>
-                    <Button Content="Fullscreen" Click="Fullscreen_Click" Margin="4" Padding="14,6"/>
+                    <Button Style="{StaticResource IconButton}" Content="&#xE100;" FontFamily="Segoe MDL2 Assets" ToolTip="Previous"
+                            Click="Previous_Click"/>
+                    <Button x:Name="PauseButton" Style="{StaticResource IconButton}" Content="&#xE769;" FontFamily="Segoe MDL2 Assets"
+                            ToolTip="Pause" Click="Pause_Click"/>
+                    <Button Style="{StaticResource IconButton}" Content="&#xE101;" FontFamily="Segoe MDL2 Assets" ToolTip="Next"
+                            Click="Next_Click"/>
+                    <Button x:Name="AudioButton" Style="{StaticResource IconButton}" Content="&#xE767;" FontFamily="Segoe MDL2 Assets"
+                            ToolTip="Unmute" Click="Audio_Click"/>
+                    <Button Style="{StaticResource IconButton}" Content="&#xE740;" FontFamily="Segoe MDL2 Assets" ToolTip="Fullscreen"
+                            Click="Fullscreen_Click"/>
                 </StackPanel>
-            </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="VideoToggle" Style="{StaticResource CompactIconButton}" Content="&#xE714;"
+                            FontFamily="Segoe MDL2 Assets" ToolTip="Toggle videos" Click="VideoToggle_Click"/>
+                    <Button Style="{StaticResource CompactIconButton}" Content="&#xE713;"
+                            FontFamily="Segoe MDL2 Assets" ToolTip="Settings" Click="Settings_Click"/>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <Border x:Name="SettingsPanel" Background="#F01D1D24" Padding="24"

@@ -70,7 +70,6 @@ public partial class MainWindow : Window
         _settings.LastFolder = folder;
         _rootFolder = folder;
         _settings.Save();
-        StatusText.Text = "Scanning folder...";
         _playlist = new Playlist([], _settings.Order, _settings.IncludeVideos);
         ImageView.Source = null;
         VideoView.Stop();
@@ -128,10 +127,9 @@ public partial class MainWindow : Window
         StopGif();
         _playbackCancellation = new CancellationTokenSource();
         _currentVideoAudible = false;
-        AudioButton.Content = "Unmute";
+        SetButtonIcon(AudioButton, "\uE767", "Unmute");
         var relativePath = _rootFolder is null ? item.Path : Path.GetRelativePath(_rootFolder, item.Path);
         PathBanner.Text = relativePath;
-        StatusText.Text = $"{Path.GetFileName(item.Path)}  •  {(_playlist?.CanGoBack == true ? "previous available" : "first item")}";
         if (item.Kind == MediaKind.Image)
         {
             VideoView.Stop();
@@ -189,7 +187,7 @@ public partial class MainWindow : Window
             AnimateTransition(VideoView);
             PreloadUpcoming();
         }
-        PauseButton.Content = "Pause";
+        SetButtonIcon(PauseButton, "\uE769", "Pause");
         _paused = false;
     }
 
@@ -368,14 +366,14 @@ public partial class MainWindow : Window
         {
             if (_paused) VideoView.Pause(); else VideoView.Play();
         }
-        PauseButton.Content = _paused ? "Resume" : "Pause";
+        SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769", _paused ? "Resume" : "Pause");
     }
 
     private void ToggleVideos()
     {
         _settings.IncludeVideos = !_settings.IncludeVideos;
         _settings.Save();
-        VideoToggle.Content = $"Videos: {(_settings.IncludeVideos ? "on" : "off")}";
+        UpdateVideoToggle();
         _playlist?.SetOptions(_settings.Order, _settings.IncludeVideos);
         if (!_settings.IncludeVideos && _playlist?.Current?.Kind == MediaKind.Video) GoNext();
     }
@@ -400,7 +398,6 @@ public partial class MainWindow : Window
     {
         EmptyMessage.Text = message;
         EmptyState.Visibility = Visibility.Visible;
-        StatusText.Text = message;
     }
 
     private void ApplySettingsToUi()
@@ -410,7 +407,17 @@ public partial class MainWindow : Window
         OrderBox.SelectedIndex = _settings.Order == PlaybackOrder.Random ? 1 : 0;
         TransitionBox.SelectedIndex = _settings.Transition == TransitionMode.Fade ? 1 : 0;
         PreloadBox.IsChecked = _settings.PreloadEnabled;
-        VideoToggle.Content = $"Videos: {(_settings.IncludeVideos ? "on" : "off")}";
+        UpdateVideoToggle();
+    }
+
+    private void UpdateVideoToggle()
+    {
+        VideoToggle.ToolTip = _settings.IncludeVideos ? "Videos enabled - click to disable"
+            : "Videos disabled - click to enable";
+        VideoToggle.Opacity = 1;
+        VideoToggle.Background = _settings.IncludeVideos
+            ? new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF))
+            : new SolidColorBrush(System.Windows.Media.Color.FromArgb(0xAA, 0x18, 0x18, 0x20));
     }
 
     private void Window_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
@@ -455,12 +462,20 @@ public partial class MainWindow : Window
         if (VideoView.Visibility != Visibility.Visible) return;
         _currentVideoAudible = !_currentVideoAudible;
         VideoView.Volume = _currentVideoAudible ? 1 : 0;
-        AudioButton.Content = _currentVideoAudible ? "Mute" : "Unmute";
+        SetButtonIcon(AudioButton, _currentVideoAudible ? "\uE74F" : "\uE767",
+            _currentVideoAudible ? "Mute" : "Unmute");
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e) =>
         SettingsPanel.Visibility = SettingsPanel.Visibility == Visibility.Visible
             ? Visibility.Collapsed : Visibility.Visible;
+
+    private static void SetButtonIcon(System.Windows.Controls.Button button, string glyph, string tooltip)
+    {
+        button.Content = glyph;
+        button.FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets");
+        button.ToolTip = tooltip;
+    }
 
     private void SaveSettings_Click(object sender, RoutedEventArgs e)
     {
