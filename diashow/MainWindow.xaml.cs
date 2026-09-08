@@ -20,6 +20,12 @@ public partial class MainWindow : Window
     private string? _rootFolder;
     private bool _paused;
     private bool _currentVideoAudible;
+    private DispatcherTimer? _gifTimer;
+    private IReadOnlyList<BitmapSource>? _gifFrames;
+    private IReadOnlyList<TimeSpan>? _gifDelays;
+    private int _gifLoopCount;
+    private int _gifCompletedLoops;
+    private int _gifFrameIndex;
 
     public MainWindow(string[] args)
     {
@@ -119,6 +125,7 @@ public partial class MainWindow : Window
     private async void ShowItem(MediaItem item)
     {
         _playbackCancellation?.Cancel();
+        StopGif();
         _playbackCancellation = new CancellationTokenSource();
         _currentVideoAudible = false;
         AudioButton.Content = "Unmute";
@@ -131,6 +138,25 @@ public partial class MainWindow : Window
             VideoView.Visibility = Visibility.Collapsed;
             try
             {
+                if (string.Equals(Path.GetExtension(item.Path), ".gif", StringComparison.OrdinalIgnoreCase))
+                {
+                    var animation = await Task.Run(() => DecodeGif(item.Path));
+                    if (_playbackCancellation.IsCancellationRequested)
+                        return;
+                    if (animation.Frames.Count == 0)
+                        throw new NotSupportedException();
+                    _gifFrames = animation.Frames;
+                    _gifDelays = animation.Delays;
+                    _gifLoopCount = animation.LoopCount;
+                    _gifCompletedLoops = 0;
+                    _gifFrameIndex = 0;
+                    ImageView.Source = animation.Frames[0];
+                    ImageView.Visibility = Visibility.Visible;
+                    AnimateTransition(ImageView);
+                    StartGifTimer();
+                    return;
+                }
+
                 var image = await _imagePreloader.GetAsync(item.Path, _playbackCancellation.Token);
                 if (image is null)
                     throw new NotSupportedException();
@@ -142,6 +168,7 @@ public partial class MainWindow : Window
                 _ = WaitThenNext(_playbackCancellation.Token);
                 PreloadUpcoming();
             }
+
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
                 or ArgumentException or InvalidOperationException or FileFormatException)
             {
@@ -164,6 +191,148 @@ public partial class MainWindow : Window
         }
         PauseButton.Content = "Pause";
         _paused = false;
+    }
+
+    private sealed record GifAnimation(
+        IReadOnlyList<BitmapSource> Frames,
+        IReadOnlyList<TimeSpan> Delays,
+        int LoopCount);
+
+    private static GifAnimation DecodeGif(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var decoder = new GifBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat,
+            BitmapCacheOption.OnLoad);
+        var sourceFrames = decoder.Frames;
+        if (sourceFrames.Count == 0)
+            return new GifAnimation([], [], 0);
+
+        var width = ReadGifMetadata(sourceFrames[0], "/logscrdesc/Width");
+        var height = ReadGifMetadata(sourceFrames[0], "/logscrdesc/Height");
+        if (width == 0) width = sourceFrames.Max(frame => frame.PixelWidth);
+        if (height == 0) height = sourceFrames.Max(frame => frame.PixelHeight);
+
+        var canvas = new byte[width * height * 4];
+        var result = new List<BitmapSource>(sourceFrames.Count);
+        var delays = new List<TimeSpan>(sourceFrames.Count);
+        var loopCount = ReadGifMetadata(sourceFrames[0], "/appext/data/"); 
+
+        foreach (var frame in sourceFrames)
+        {
+            var left = ReadGifMetadata(frame, "/imgdesc/Left");
+            var top = ReadGifMetadata(frame, "/imgdesc/Top");
+            var converted = new FormatConvertedBitmap(frame, PixelFormats.Bgra32, null, 0);
+            var pixels = new byte[frame.PixelWidth * frame.PixelHeight * 4];
+            converted.CopyPixels(pixels, frame.PixelWidth * 4, 0);
+            var before = (byte[])canvas.Clone();
+
+            for (var y = 0; y < frame.PixelHeight; y++)
+            {
+                for (var x = 0; x < frame.PixelWidth; x++)
+                {
+                    var destinationX = left + x;
+                    var destinationY = top + y;
+                    if (destinationX < 0 || destinationX >= width || destinationY < 0 || destinationY >= height)
+                        continue;
+                    var sourceIndex = (y * frame.PixelWidth + x) * 4;
+                    if (pixels[sourceIndex + 3] == 0)
+                        continue;
+                    var destinationIndex = (destinationY * width + destinationX) * 4;
+                    Buffer.BlockCopy(pixels, sourceIndex, canvas, destinationIndex, 4);
+                }
+            }
+
+            var composed = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
+            composed.WritePixels(new Int32Rect(0, 0, width, height), canvas, width * 4, 0);
+            composed.Freeze();
+            result.Add(composed);
+            var delay = ReadGifMetadata(frame, "/grctlext/Delay");
+            delays.Add(TimeSpan.FromMilliseconds(Math.Max(10, delay * 10)));
+
+            switch (ReadGifMetadata(frame, "/grctlext/Disposal"))
+            {
+                case 2:
+                    ClearRect(canvas, width, height, left, top, frame.PixelWidth, frame.PixelHeight);
+                    break;
+                case 3:
+                    canvas = before;
+                    break;
+            }
+        }
+
+        return new GifAnimation(result, delays, loopCount);
+    }
+
+    private static int ReadGifMetadata(BitmapFrame frame, string query)
+    {
+        if (frame.Metadata is BitmapMetadata metadata &&
+            metadata.ContainsQuery(query))
+        {
+            var value = metadata.GetQuery(query);
+            return value switch
+            {
+                byte number => number,
+                ushort number => number,
+                short number => number,
+                uint number => (int)number,
+                _ => 0
+            };
+        }
+        return 0;
+    }
+
+    private static void ClearRect(byte[] canvas, int width, int height, int left, int top, int rectWidth, int rectHeight)
+    {
+        for (var y = Math.Max(0, top); y < Math.Min(height, top + rectHeight); y++)
+        {
+            var start = (y * width + Math.Max(0, left)) * 4;
+            var length = (Math.Min(width, left + rectWidth) - Math.Max(0, left)) * 4;
+            if (length > 0)
+                Array.Clear(canvas, start, length);
+        }
+    }
+
+    private void StartGifTimer()
+    {
+        _gifTimer = new DispatcherTimer { Interval = _gifDelays?[0] ?? TimeSpan.FromMilliseconds(100) };
+        _gifTimer.Tick += GifTimer_Tick;
+        _gifTimer.Start();
+    }
+
+    private void GifTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_paused || _gifFrames is null || _gifFrames.Count == 0)
+            return;
+        _gifFrameIndex++;
+        if (_gifFrameIndex >= _gifFrames.Count)
+        {
+            _gifFrameIndex = 0;
+            _gifCompletedLoops++;
+            var requiredLoops = _gifLoopCount == 0 ? 1 : _gifLoopCount + 1;
+            if (_gifCompletedLoops >= requiredLoops)
+            {
+                GoNext();
+                return;
+            }
+        }
+        ImageView.Source = _gifFrames[_gifFrameIndex];
+        if (_gifTimer is not null)
+            _gifTimer.Interval = _gifDelays?[_gifFrameIndex] ?? TimeSpan.FromMilliseconds(100);
+    }
+
+    private void StopGif()
+    {
+        if (_gifTimer is not null)
+        {
+            _gifTimer.Stop();
+            _gifTimer.Tick -= GifTimer_Tick;
+            _gifTimer = null;
+        }
+        _gifFrames = null;
+        _gifDelays = null;
+        _gifLoopCount = 0;
+        _gifCompletedLoops = 0;
+        _gifFrameIndex = 0;
     }
 
     private void PreloadUpcoming()
@@ -334,6 +503,7 @@ public partial class MainWindow : Window
     {
         _playbackCancellation?.Cancel();
         _scanCancellation?.Cancel();
+        StopGif();
         VideoView.Stop();
         _imagePreloader.Dispose();
         _settings.Save();
