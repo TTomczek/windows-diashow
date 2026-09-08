@@ -17,7 +17,7 @@ namespace diashow;
 public partial class MainWindow : Window
 {
     private const int DiscoveryBatchThreshold = 2000;
-    private const int DiscoveryBatchSize = 512;
+    private const int DiscoveryBatchSize = 500;
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly ImagePreloader _imagePreloader = new();
     private readonly DispatcherTimer _controlsTimer = new() { Interval = TimeSpan.FromSeconds(3) };
