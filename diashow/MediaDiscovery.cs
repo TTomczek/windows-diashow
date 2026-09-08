@@ -1,5 +1,5 @@
-using System.Windows.Media.Imaging;
 using System.Threading.Channels;
+using System.Windows.Media.Imaging;
 
 namespace diashow;
 
@@ -12,7 +12,7 @@ public static class MediaDiscovery
     {
         var channel = Channel.CreateUnbounded<MediaItem>(new UnboundedChannelOptions
         {
-            SingleWriter = true,
+            SingleWriter = false,
             SingleReader = true
         });
 
@@ -23,28 +23,40 @@ public static class MediaDiscovery
                 if (!Directory.Exists(folder))
                     return;
 
-                var paths = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).ToList();
+                var partitions = EnumeratePartitions(folder).ToList();
                 if (randomize)
-                {
-                    for (var i = paths.Count - 1; i > 0; i--)
-                    {
-                        var j = Random.Shared.Next(i + 1);
-                        (paths[i], paths[j]) = (paths[j], paths[i]);
-                    }
-                }
+                    Shuffle(partitions);
 
-                foreach (var path in paths)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var kind = await Task.Run(() => TryImage(path), cancellationToken);
-                    await channel.Writer.WriteAsync(new MediaItem(path, kind ? MediaKind.Image : MediaKind.Video),
-                        cancellationToken);
-                }
+                await Parallel.ForEachAsync(
+                    partitions,
+                    new ParallelOptions
+                    {
+                        CancellationToken = cancellationToken,
+                        MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount, 2, 8)
+                    },
+                    async (partition, token) =>
+                    {
+                        var randomizedPaths = randomize
+                            ? EnumerateFiles(partition, partition == folder).ToList()
+                            : null;
+                        if (randomizedPaths is not null)
+                            Shuffle(randomizedPaths);
+                        var paths = (IEnumerable<string>?)randomizedPaths
+                            ?? EnumerateFiles(partition, partition == folder);
+
+                        foreach (var path in paths)
+                        {
+                            token.ThrowIfCancellationRequested();
+                            var kind = TryImage(path);
+                            await channel.Writer.WriteAsync(
+                                new MediaItem(path, kind ? MediaKind.Image : MediaKind.Video), token);
+                        }
+                    });
             }
             catch (OperationCanceledException)
             {
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (IsDiscoveryException(ex))
             {
             }
             finally
@@ -61,17 +73,96 @@ public static class MediaDiscovery
         if (!Directory.Exists(folder))
             return [];
 
-        var result = new List<MediaItem>();
-        foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
-                     .OrderBy(static p => p, StringComparer.CurrentCultureIgnoreCase))
-        {
-            if (TryImage(path))
-                result.Add(new MediaItem(path, MediaKind.Image));
-            else
-                result.Add(new MediaItem(path, MediaKind.Video));
-        }
+        var result = EnumeratePartitions(folder)
+            .AsParallel()
+            .WithDegreeOfParallelism(Math.Clamp(Environment.ProcessorCount, 2, 8))
+            .SelectMany(partition => EnumerateFiles(partition, partition == folder)
+                .Select(path => new MediaItem(path, TryImage(path) ? MediaKind.Image : MediaKind.Video)))
+            .OrderBy(static item => item.Path, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
         return result;
     }
+
+    private static IEnumerable<string> EnumeratePartitions(string folder)
+    {
+        yield return folder;
+
+        IEnumerator<string> directories;
+        try
+        {
+            directories = Directory.EnumerateDirectories(
+                folder, "*", SearchOption.TopDirectoryOnly).GetEnumerator();
+        }
+        catch (Exception ex) when (IsDiscoveryException(ex))
+        {
+            yield break;
+        }
+
+        using (directories)
+        while (true)
+        {
+            bool hasNext;
+            try
+            {
+                hasNext = directories.MoveNext();
+            }
+            catch (Exception ex) when (IsDiscoveryException(ex))
+            {
+                yield break;
+            }
+
+            if (!hasNext)
+                yield break;
+            yield return directories.Current;
+        }
+    }
+
+    private static IEnumerable<string> EnumerateFiles(string partition, bool topDirectoryOnly)
+    {
+        IEnumerator<string> files;
+        try
+        {
+            files = Directory.EnumerateFiles(
+                partition,
+                "*",
+                topDirectoryOnly ? SearchOption.TopDirectoryOnly : SearchOption.AllDirectories).GetEnumerator();
+        }
+        catch (Exception ex) when (IsDiscoveryException(ex))
+        {
+            yield break;
+        }
+
+        using (files)
+        while (true)
+        {
+            bool hasNext;
+            try
+            {
+                hasNext = files.MoveNext();
+            }
+            catch (Exception ex) when (IsDiscoveryException(ex))
+            {
+                yield break;
+            }
+
+            if (!hasNext)
+                yield break;
+            yield return files.Current;
+        }
+    }
+
+    private static void Shuffle<T>(IList<T> items)
+    {
+        for (var i = items.Count - 1; i > 0; i--)
+        {
+            var j = Random.Shared.Next(i + 1);
+            (items[i], items[j]) = (items[j], items[i]);
+        }
+    }
+
+    private static bool IsDiscoveryException(Exception exception) =>
+        exception is IOException or UnauthorizedAccessException or DirectoryNotFoundException
+            or PathTooLongException;
 
     private static bool TryImage(string path)
     {
@@ -87,4 +178,28 @@ public static class MediaDiscovery
             return false;
         }
     }
+
+    public static bool IsCorruptJpeg(string path)
+    {
+        if (!IsJpeg(path))
+            return false;
+
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                64 * 1024, FileOptions.SequentialScan);
+            using var image = Image.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: true);
+            using var bitmap = new Bitmap(image);
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or ArgumentException or NotSupportedException)
+        {
+            return true;
+        }
+    }
+
+    private static bool IsJpeg(string path) =>
+        string.Equals(Path.GetExtension(path), ".jpg", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Path.GetExtension(path), ".jpeg", StringComparison.OrdinalIgnoreCase);
 }
