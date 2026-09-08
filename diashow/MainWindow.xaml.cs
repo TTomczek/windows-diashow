@@ -86,11 +86,11 @@ public partial class MainWindow : Window
             pending.Add(item);
             var isRequestedItem = startFile is not null &&
                 string.Equals(item.Path, startFile, StringComparison.OrdinalIgnoreCase);
-            if (!started && (startFile is null || isRequestedItem))
+            if (!started && startFile is not null && isRequestedItem)
             {
                 _playlist.AddItems(pending);
                 pending.Clear();
-                var first = startFile is null ? _playlist.Next() : _playlist.StartAt(startFile);
+                var first = _playlist.StartAt(startFile);
                 if (first is not null)
                 {
                     started = true;
@@ -111,7 +111,7 @@ public partial class MainWindow : Window
             _playlist.AddItems(pending);
         if (!started)
         {
-            var first = startFile is null ? _playlist.Next() : _playlist.StartAt(startFile);
+            var first = startFile is null ? _playlist.StartRandom() : _playlist.StartAt(startFile);
             if (first is not null)
             {
                 EmptyState.Visibility = Visibility.Collapsed;

@@ -50,6 +50,20 @@ public sealed class Playlist
         return candidate;
     }
 
+    public MediaItem? StartRandom()
+    {
+        var items = Filtered();
+        if (items.Count == 0) return null;
+
+        var candidate = items[_random.Next(items.Count)];
+        _history.Clear();
+        _history.Add(candidate);
+        _historyIndex = 0;
+        RebuildUnseen();
+        _unseen.RemoveAll(x => string.Equals(x.Path, candidate.Path, StringComparison.OrdinalIgnoreCase));
+        return candidate;
+    }
+
     public MediaItem? Next()
     {
         if (_historyIndex < _history.Count - 1)

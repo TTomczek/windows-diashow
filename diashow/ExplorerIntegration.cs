@@ -8,8 +8,8 @@ public static class ExplorerIntegration
     {
         var exe = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(exe)) return;
-        Add(@"Software\Classes\Directory\shell\diashow", "Play with diashow", $"\"{exe}\" \"%1\"");
-        Add(@"Software\Classes\*\shell\diashow", "Play with diashow", $"\"{exe}\" \"%1\"");
+        Add(@"Software\Classes\Directory\shell\diashow", "Start diashow", $"\"{exe}\" \"%1\"");
+        Add(@"Software\Classes\*\shell\diashow", "Start diashow", $"\"{exe}\" \"%1\"");
     }
 
     private static void Add(string keyPath, string label, string command)
