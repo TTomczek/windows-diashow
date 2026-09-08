@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private string? _rootFolder;
     private bool _paused;
     private bool _currentVideoAudible;
+    private bool _settingsUiReady;
     private DispatcherTimer? _gifTimer;
     private IReadOnlyList<BitmapSource>? _gifFrames;
     private IReadOnlyList<TimeSpan>? _gifDelays;
@@ -408,6 +409,7 @@ public partial class MainWindow : Window
         TransitionBox.SelectedIndex = _settings.Transition == TransitionMode.Fade ? 1 : 0;
         PreloadBox.IsChecked = _settings.PreloadEnabled;
         UpdateVideoToggle();
+        _settingsUiReady = true;
     }
 
     private void UpdateVideoToggle()
@@ -479,12 +481,21 @@ public partial class MainWindow : Window
 
     private void SaveSettings_Click(object sender, RoutedEventArgs e)
     {
+        SaveSettingsFromUi();
         SettingsPanel.Visibility = Visibility.Collapsed;
     }
 
     private void SettingsControl_Changed(object sender, RoutedEventArgs e)
     {
+        if (!_settingsUiReady)
+            return;
         SaveSettingsFromUi();
+    }
+
+    private void SettingsControl_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_settingsUiReady)
+            SaveSettingsFromUi();
     }
 
     private void SaveSettingsFromUi()

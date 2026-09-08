@@ -92,7 +92,8 @@
             <StackPanel>
                 <TextBlock Text="Settings" Foreground="White" FontSize="22" Margin="0,0,0,16"/>
                 <TextBlock Text="Image duration (seconds)" Foreground="White"/>
-                <TextBox x:Name="DurationBox" Margin="0,4,0,12" TextChanged="SettingsControl_Changed"/>
+                <TextBox x:Name="DurationBox" Margin="0,4,0,12" TextChanged="SettingsControl_Changed"
+                         LostFocus="SettingsControl_LostFocus"/>
                 <TextBlock Text="Playback order" Foreground="White"/>
                 <ComboBox x:Name="OrderBox" Margin="0,4,0,12" SelectionChanged="SettingsControl_Changed">
                     <ComboBoxItem Content="Filename order"/>
@@ -104,7 +105,8 @@
                     <ComboBoxItem Content="Simple fade"/>
                 </ComboBox>
                 <TextBlock Text="Fade duration (seconds)" Foreground="White"/>
-                <TextBox x:Name="FadeBox" Margin="0,4,0,18" TextChanged="SettingsControl_Changed"/>
+                <TextBox x:Name="FadeBox" Margin="0,4,0,18" TextChanged="SettingsControl_Changed"
+                         LostFocus="SettingsControl_LostFocus"/>
                 <CheckBox x:Name="PreloadBox" Content="Preload upcoming images"
                           Foreground="White" Margin="0,0,0,8"
                           Checked="SettingsControl_Changed" Unchecked="SettingsControl_Changed"/>
