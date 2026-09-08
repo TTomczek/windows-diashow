@@ -471,6 +471,7 @@ public partial class MainWindow : Window
             case Key.F: SetFullscreen(WindowStyle != WindowStyle.None); break;
             case Key.V: ToggleVideos(); break;
             case Key.M: ToggleAudio(); break;
+            case Key.E: RevealCurrentInExplorer(); break;
             case Key.Escape:
                 if (SettingsPanel.Visibility == Visibility.Visible) SettingsPanel.Visibility = Visibility.Collapsed;
                 else if (WindowStyle == WindowStyle.None) SetFullscreen(false);
@@ -544,6 +545,16 @@ public partial class MainWindow : Window
     private void Previous_Click(object sender, RoutedEventArgs e) => GoPrevious();
     private void VideoToggle_Click(object sender, RoutedEventArgs e) => ToggleVideos();
     private void Fullscreen_Click(object sender, RoutedEventArgs e) => SetFullscreen(WindowStyle != WindowStyle.None);
+
+    private void RevealInExplorer_Click(object sender, RoutedEventArgs e) => RevealCurrentInExplorer();
+
+    private void RevealCurrentInExplorer()
+    {
+        if (_playlist?.Current is not { } current)
+            return;
+
+        ExplorerIntegration.Reveal(current.Path);
+    }
 
     private void Audio_Click(object sender, RoutedEventArgs e) => ToggleAudio();
 

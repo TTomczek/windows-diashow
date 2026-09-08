@@ -93,6 +93,8 @@
                             Click="Next_Click"/>
                     <Button x:Name="AudioButton" Style="{StaticResource IconButton}" Content="&#xE767;" FontFamily="Segoe MDL2 Assets"
                             ToolTip="Unmute" Click="Audio_Click"/>
+                    <Button Style="{StaticResource IconButton}" Content="&#xE8B7;" FontFamily="Segoe MDL2 Assets"
+                            ToolTip="Reveal in explorer" Click="RevealInExplorer_Click"/>
                     <Button Style="{StaticResource IconButton}" Content="&#xE740;" FontFamily="Segoe MDL2 Assets" ToolTip="Fullscreen"
                             Click="Fullscreen_Click"/>
                 </StackPanel>
@@ -143,6 +145,8 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Text="Space" Foreground="White" Margin="0,2,16,2"/>
                     <TextBlock Grid.Column="1" Text="Pause or resume" Foreground="#FFCCCCCC" Margin="0,2"/>
@@ -156,9 +160,11 @@
                     <TextBlock Grid.Row="4" Grid.Column="1" Text="Toggle videos" Foreground="#FFCCCCCC" Margin="0,2"/>
                     <TextBlock Grid.Row="5" Text="M" Foreground="White" Margin="0,2,16,2"/>
                     <TextBlock Grid.Row="5" Grid.Column="1" Text="Mute or unmute video" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock Grid.Row="6" Text="Escape" Foreground="White" Margin="0,2,16,2"/>
+                    <TextBlock Grid.Row="6" Grid.Column="1" Text="Close settings or exit fullscreen" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock Grid.Row="7" Text="E" Foreground="White" Margin="0,2,16,2"/>
+                    <TextBlock Grid.Row="7" Grid.Column="1" Text="Reveal current file in Explorer" Foreground="#FFCCCCCC" Margin="0,2"/>
                 </Grid>
-                <TextBlock Text="Escape - Close settings or exit fullscreen" Foreground="#FFCCCCCC"
-                       Margin="0,0,0,16"/>
                 <Button Content="Choose folder..." Click="ChooseFolder_Click" Margin="0,0,0,8"/>
                 <Button Content="Close" Click="SaveSettings_Click"/>
             </StackPanel>

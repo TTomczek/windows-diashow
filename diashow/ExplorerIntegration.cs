@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Win32;
 
 namespace diashow;
@@ -18,5 +19,18 @@ public static class ExplorerIntegration
         key?.SetValue(null, label);
         using var commandKey = Registry.CurrentUser.CreateSubKey($"{keyPath}\\command");
         commandKey?.SetValue(null, command);
+    }
+
+    public static void Reveal(string path)
+    {
+        if (!File.Exists(path))
+            throw new FileNotFoundException("The media file no longer exists.", path);
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            Arguments = $"/select,\"{path}\"",
+            UseShellExecute = true
+        });
     }
 }
