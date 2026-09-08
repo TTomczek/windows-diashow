@@ -75,6 +75,8 @@ public sealed class Playlist
         {
             var loop = Filtered();
             if (loop.Count == 0) return null;
+            _history.Clear();
+            _historyIndex = -1;
             _unseen = Order(loop);
         }
 
