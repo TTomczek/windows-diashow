@@ -80,6 +80,7 @@ public partial class MainWindow : Window
         _settings.LastFolder = folder;
         _rootFolder = folder;
         _settings.Save();
+        _imagePreloader.Clear();
         _playlist = new Playlist([], _settings.Order, _settings.IncludeVideos);
         ImageView.Source = null;
         StopVideoProgress();

@@ -12,7 +12,7 @@ public sealed class Playlist
 
     public MediaItem? Current => _historyIndex >= 0 && _historyIndex < _history.Count ? _history[_historyIndex] : null;
     public int CurrentPosition => _historyIndex >= 0 ? _historyIndex + 1 : 0;
-    public int TotalCount => Filtered().Count;
+    public int TotalCount => _includeVideos ? _all.Count : _all.Count(static item => item.Kind == MediaKind.Image);
     public bool CanGoBack => _historyIndex > 0;
     public IEnumerable<MediaItem> PreloadCandidates(int count) =>
         new[] { Current }.Concat(_unseen).Where(x => x is not null).Take(Math.Max(0, count) + 1)!;

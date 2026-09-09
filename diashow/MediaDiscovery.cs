@@ -59,7 +59,7 @@ public static class MediaDiscovery
             {
                 channel.Writer.TryComplete();
             }
-        }, cancellationToken);
+        });
 
         return channel.Reader;
     }

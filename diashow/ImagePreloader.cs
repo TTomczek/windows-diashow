@@ -11,6 +11,7 @@ public sealed class ImagePreloader : IDisposable
     private readonly int _capacity;
     private readonly object _trimLock = new();
     private readonly Queue<string> _cacheOrder = [];
+    private int _cacheGeneration;
 
     public ImagePreloader(int capacity = 4) => _capacity = Math.Max(2, capacity);
 
@@ -40,11 +41,12 @@ public sealed class ImagePreloader : IDisposable
 
     private async Task<BitmapSource> LoadAsync(string path)
     {
+        var generation = Volatile.Read(ref _cacheGeneration);
         await _loadSlots.WaitAsync();
         try
         {
             var image = await Task.Run(() => Decode(path));
-            Remember(path);
+            Remember(path, generation);
             return image;
         }
         finally
@@ -58,19 +60,31 @@ public sealed class ImagePreloader : IDisposable
         return ImageDecoder.Decode(path);
     }
 
-    private void Remember(string path)
+    private void Remember(string path, int generation)
     {
         lock (_trimLock)
         {
+            if (generation != _cacheGeneration)
+                return;
             _cacheOrder.Enqueue(path);
             while (_cacheOrder.Count > _capacity && _cacheOrder.TryDequeue(out var oldest))
                 _cache.TryRemove(oldest, out _);
         }
     }
 
+    public void Clear()
+    {
+        lock (_trimLock)
+        {
+            _cacheGeneration++;
+            _cacheOrder.Clear();
+            _cache.Clear();
+        }
+    }
+
     public void Dispose()
     {
+        Clear();
         _loadSlots.Dispose();
-        _cache.Clear();
     }
 }
