@@ -97,6 +97,7 @@
                         Visibility="Collapsed" IsTabStop="True"
                         ToolTip="Video position"
                         ValueChanged="VideoProgress_ValueChanged"
+                        PreviewMouseLeftButtonDown="VideoProgress_PreviewMouseLeftButtonDown"
                         PreviewKeyDown="VideoProgress_PreviewKeyDown"/>
                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
                     <Button Style="{StaticResource IconButton}" Content="&#xE100;" FontFamily="Segoe MDL2 Assets" ToolTip="Previous"

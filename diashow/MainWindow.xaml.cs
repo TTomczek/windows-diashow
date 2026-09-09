@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -202,6 +203,7 @@ public partial class MainWindow : Window
             VideoView.Source = new Uri(item.Path);
             VideoView.Volume = 0;
             VideoView.Play();
+            _videoProgressTimer.Start();
             AnimateTransition(VideoView);
             PreloadUpcoming();
         }
@@ -530,6 +532,22 @@ public partial class MainWindow : Window
         VideoView.Position = TimeSpan.FromSeconds(e.NewValue);
     }
 
+    private void VideoProgress_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is Thumb ||
+            VideoProgress.Visibility != Visibility.Visible ||
+            VideoView.Visibility != Visibility.Visible ||
+            !VideoView.NaturalDuration.HasTimeSpan ||
+            VideoProgress.ActualWidth <= 0)
+            return;
+
+        var position = e.GetPosition(VideoProgress);
+        var ratio = Math.Clamp(position.X / VideoProgress.ActualWidth, 0, 1);
+        VideoProgress.Value = VideoProgress.Minimum +
+            ratio * (VideoProgress.Maximum - VideoProgress.Minimum);
+        e.Handled = true;
+    }
+
     private void VideoProgress_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key is not (Key.Left or Key.Right) ||
@@ -544,9 +562,17 @@ public partial class MainWindow : Window
     private void UpdateVideoProgress()
     {
         if (VideoView.Visibility != Visibility.Visible ||
-            VideoProgress.Visibility != Visibility.Visible ||
-            VideoProgress.IsMouseCaptureWithin ||
-            VideoProgress.IsKeyboardFocusWithin)
+            !VideoView.NaturalDuration.HasTimeSpan)
+            return;
+
+        if (VideoProgress.Visibility != Visibility.Visible)
+        {
+            VideoProgress.Maximum = VideoView.NaturalDuration.TimeSpan.TotalSeconds;
+            VideoProgress.Value = Math.Clamp(VideoView.Position.TotalSeconds, 0, VideoProgress.Maximum);
+            VideoProgress.Visibility = Visibility.Visible;
+        }
+
+        if (VideoProgress.IsMouseCaptureWithin || VideoProgress.IsKeyboardFocusWithin)
             return;
 
         VideoProgress.Value = Math.Clamp(VideoView.Position.TotalSeconds, 0, VideoProgress.Maximum);
