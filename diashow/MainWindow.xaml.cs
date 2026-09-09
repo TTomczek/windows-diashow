@@ -16,7 +16,6 @@ namespace diashow;
 
 public partial class MainWindow : Window
 {
-    private const int DiscoveryBatchThreshold = 2000;
     private const int DiscoveryBatchSize = 500;
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly ImagePreloader _imagePreloader = new();
@@ -110,8 +109,7 @@ public partial class MainWindow : Window
                     ShowItem(first);
                 }
             }
-            else if (started && pending.Count >=
-                (_playlist.TotalCount >= DiscoveryBatchThreshold ? DiscoveryBatchSize : 1))
+            else if (started && pending.Count >= DiscoveryBatchSize)
             {
                 _playlist.AddItems(pending);
                 pending.Clear();

@@ -12,7 +12,7 @@ public sealed class ImagePreloader : IDisposable
     private readonly object _trimLock = new();
     private readonly Queue<string> _cacheOrder = [];
 
-    public ImagePreloader(int capacity = 12) => _capacity = Math.Max(4, capacity);
+    public ImagePreloader(int capacity = 4) => _capacity = Math.Max(2, capacity);
 
     public async Task<BitmapSource> GetAsync(string path, CancellationToken cancellationToken)
     {

@@ -1,19 +1,24 @@
 using System.Threading.Channels;
-using System.Windows.Media.Imaging;
 
 namespace diashow;
 
 public static class MediaDiscovery
 {
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"
+    };
+
     public static ChannelReader<MediaItem> Stream(
         string folder,
         CancellationToken cancellationToken = default,
         bool randomize = false)
     {
-        var channel = Channel.CreateUnbounded<MediaItem>(new UnboundedChannelOptions
+        var channel = Channel.CreateBounded<MediaItem>(new BoundedChannelOptions(512)
         {
             SingleWriter = false,
-            SingleReader = true
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.Wait
         });
 
         _ = Task.Run(async () =>
@@ -36,20 +41,11 @@ public static class MediaDiscovery
                     },
                     async (partition, token) =>
                     {
-                        var randomizedPaths = randomize
-                            ? EnumerateFiles(partition, partition == folder).ToList()
-                            : null;
-                        if (randomizedPaths is not null)
-                            Shuffle(randomizedPaths);
-                        var paths = (IEnumerable<string>?)randomizedPaths
-                            ?? EnumerateFiles(partition, partition == folder);
-
-                        foreach (var path in paths)
+                        foreach (var path in EnumerateFiles(partition, partition == folder))
                         {
                             token.ThrowIfCancellationRequested();
-                            var kind = TryImage(path);
                             await channel.Writer.WriteAsync(
-                                new MediaItem(path, kind ? MediaKind.Image : MediaKind.Video), token);
+                                new MediaItem(path, GetMediaKind(path)), token);
                         }
                     });
             }
@@ -77,7 +73,7 @@ public static class MediaDiscovery
             .AsParallel()
             .WithDegreeOfParallelism(Math.Clamp(Environment.ProcessorCount, 2, 8))
             .SelectMany(partition => EnumerateFiles(partition, partition == folder)
-                .Select(path => new MediaItem(path, TryImage(path) ? MediaKind.Image : MediaKind.Video)))
+                .Select(path => new MediaItem(path, GetMediaKind(path))))
             .OrderBy(static item => item.Path, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
         return result;
@@ -164,20 +160,10 @@ public static class MediaDiscovery
         exception is IOException or UnauthorizedAccessException or DirectoryNotFoundException
             or PathTooLongException;
 
-    private static bool TryImage(string path)
-    {
-        try
-        {
-            using var stream = File.OpenRead(path);
-            BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
-            or ArgumentException or InvalidOperationException or FileFormatException)
-        {
-            return false;
-        }
-    }
+    private static MediaKind GetMediaKind(string path) =>
+        ImageExtensions.Contains(Path.GetExtension(path))
+            ? MediaKind.Image
+            : MediaKind.Video;
 
     public static bool IsCorruptJpeg(string path)
     {
