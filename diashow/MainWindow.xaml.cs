@@ -176,8 +176,6 @@ public partial class MainWindow : Window
                 }
 
                 var image = await _imagePreloader.GetAsync(item.Path, _playbackCancellation.Token);
-                if (image is null)
-                    throw new NotSupportedException();
                 if (_playbackCancellation.IsCancellationRequested)
                     return;
                 ImageView.Source = image;
@@ -188,9 +186,9 @@ public partial class MainWindow : Window
             }
 
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
-                or ArgumentException or InvalidOperationException or FileFormatException)
+                or ArgumentException or InvalidOperationException or FileFormatException or InvalidDataException)
             {
-                ShowMessage($"Skipped unreadable file: {Path.GetFileName(item.Path)}");
+                ShowAccessToast(item.Path, ex);
                 GoNext();
             }
             catch (OperationCanceledException)
@@ -495,8 +493,31 @@ public partial class MainWindow : Window
     private void VideoView_MediaFailed(object sender, ExceptionRoutedEventArgs e)
     {
         StopVideoProgress();
-        ShowMessage($"Skipped unreadable file: {Path.GetFileName(VideoView.Source?.LocalPath)}");
+        if (VideoView.Source is { } source)
+            ShowAccessToast(source.LocalPath, e.ErrorException);
         GoNext();
+    }
+
+    private void ShowAccessToast(string path, Exception? exception)
+    {
+        var errorType = exception?.GetType().Name ?? "UnknownError";
+        var errorMessage = exception is null || string.IsNullOrWhiteSpace(exception.Message)
+            ? string.Empty
+            : $"{exception.Message}\n";
+        ShowToast($"File error: {errorType}", $"{errorMessage}{Path.GetFileName(path)}\n{path}");
+    }
+
+    private void ShowToast(string type, string message)
+    {
+        AccessToastType.Text = type;
+        AccessToastMessage.Text = message;
+        AccessToast.Visibility = Visibility.Visible;
+    }
+
+    private void AccessToast_Click(object sender, MouseButtonEventArgs e)
+    {
+        AccessToast.Visibility = Visibility.Collapsed;
+        e.Handled = true;
     }
 
     private void VideoProgress_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

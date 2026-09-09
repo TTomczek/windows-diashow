@@ -186,6 +186,9 @@ public static class MediaDiscovery
 
         try
         {
+            if (!HasJpegEndMarker(path))
+                return true;
+
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
                 64 * 1024, FileOptions.SequentialScan);
             using var image = Image.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: true);
@@ -197,6 +200,25 @@ public static class MediaDiscovery
         {
             return true;
         }
+    }
+
+    private static bool HasJpegEndMarker(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            64 * 1024, FileOptions.SequentialScan);
+        var buffer = new byte[64 * 1024];
+        var previous = (byte)0;
+        int read;
+        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            for (var index = 0; index < read; index++)
+            {
+                if (previous == 0xFF && buffer[index] == 0xD9)
+                    return true;
+                previous = buffer[index];
+            }
+        }
+        return false;
     }
 
     private static bool IsJpeg(string path) =>

@@ -5,7 +5,7 @@ namespace diashow;
 
 public sealed class ImagePreloader : IDisposable
 {
-    private readonly ConcurrentDictionary<string, Task<BitmapSource?>> _cache =
+    private readonly ConcurrentDictionary<string, Task<BitmapSource>> _cache =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _loadSlots = new(2, 2);
     private readonly int _capacity;
@@ -14,7 +14,7 @@ public sealed class ImagePreloader : IDisposable
 
     public ImagePreloader(int capacity = 12) => _capacity = Math.Max(4, capacity);
 
-    public async Task<BitmapSource?> GetAsync(string path, CancellationToken cancellationToken)
+    public async Task<BitmapSource> GetAsync(string path, CancellationToken cancellationToken)
     {
         var task = _cache.GetOrAdd(path, LoadAsync);
         try
@@ -38,7 +38,7 @@ public sealed class ImagePreloader : IDisposable
         }
     }
 
-    private async Task<BitmapSource?> LoadAsync(string path)
+    private async Task<BitmapSource> LoadAsync(string path)
     {
         await _loadSlots.WaitAsync();
         try
@@ -46,11 +46,6 @@ public sealed class ImagePreloader : IDisposable
             var image = await Task.Run(() => Decode(path));
             Remember(path);
             return image;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
-            or ArgumentException or InvalidOperationException or FileFormatException)
-        {
-            return null;
         }
         finally
         {
@@ -60,13 +55,7 @@ public sealed class ImagePreloader : IDisposable
 
     private static BitmapSource Decode(string path)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-            64 * 1024, FileOptions.SequentialScan);
-        var decoder = BitmapDecoder.Create(
-            stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-        var image = decoder.Frames[0];
-        image.Freeze();
-        return image;
+        return ImageDecoder.Decode(path);
     }
 
     private void Remember(string path)
