@@ -45,6 +45,129 @@
                 <Setter Property="FontSize" Value="17"/>
                 <Setter Property="Margin" Value="3"/>
             </Style>
+            <Style x:Key="OverlayButton" TargetType="Button">
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="Background" Value="#33FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#55FFFFFF"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="12,7"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="7">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#66FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Background" Value="#99FFFFFF"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style TargetType="TextBox">
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="Background" Value="#33101014"/>
+                <Setter Property="BorderBrush" Value="#55FFFFFF"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="8,5"/>
+                <Setter Property="CaretBrush" Value="White"/>
+            </Style>
+            <Style TargetType="ComboBox">
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="Background" Value="#33101014"/>
+                <Setter Property="BorderBrush" Value="#55FFFFFF"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="7,4"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBox">
+                            <Grid>
+                                <ToggleButton x:Name="DropDownButton"
+                                              IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                              ClickMode="Press"
+                                              Foreground="{TemplateBinding Foreground}"
+                                              Background="{TemplateBinding Background}"
+                                              BorderBrush="{TemplateBinding BorderBrush}"
+                                              BorderThickness="{TemplateBinding BorderThickness}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                    CornerRadius="4">
+                                                <Grid>
+                                                    <Path Data="M 0 0 L 8 0 L 4 4 Z"
+                                                          Fill="{TemplateBinding Foreground}"
+                                                          Width="8" Height="4"
+                                                          HorizontalAlignment="Right"
+                                                          Margin="0,0,9,0"/>
+                                                </Grid>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
+                                <ContentPresenter IsHitTestVisible="False"
+                                                  Content="{TemplateBinding SelectionBoxItem}"
+                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  VerticalAlignment="Center"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                <Popup x:Name="DropDown"
+                                       AllowsTransparency="True"
+                                       IsOpen="{TemplateBinding IsDropDownOpen}"
+                                       Placement="Bottom"
+                                       PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                       PopupAnimation="Fade">
+                                    <Border Background="#FF1D1D24"
+                                            BorderBrush="#88FFFFFF"
+                                            BorderThickness="1"
+                                            Width="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                                        <ScrollViewer MaxHeight="240">
+                                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style TargetType="ComboBoxItem">
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="Background" Value="#FF1D1D24"/>
+                <Setter Property="Padding" Value="7,5"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBoxItem">
+                            <Border Background="{TemplateBinding Background}"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#55FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="#77FFFFFF"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style TargetType="CheckBox">
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="Padding" Value="5,3"/>
+            </Style>
         </Grid.Resources>
         <Image x:Name="ImageView" Stretch="Uniform" Visibility="Collapsed"/>
         <MediaElement x:Name="VideoView" Stretch="Uniform" Visibility="Collapsed"
@@ -55,7 +178,7 @@
                     Visibility="Collapsed">
             <TextBlock x:Name="EmptyMessage" Foreground="White" FontSize="24"
                        TextAlignment="Center" Margin="0,0,0,14"/>
-            <Button Content="Choose folder..." Click="ChooseFolder_Click"
+            <Button Style="{StaticResource OverlayButton}" Content="Choose folder..." Click="ChooseFolder_Click"
                     HorizontalAlignment="Center" Padding="16,7"/>
         </StackPanel>
         <Border Background="#66000000" Padding="16,10"
@@ -180,8 +303,8 @@
                     <TextBlock Grid.Row="7" Text="E" Foreground="White" Margin="0,2,16,2"/>
                     <TextBlock Grid.Row="7" Grid.Column="1" Text="Reveal current file in Explorer" Foreground="#FFCCCCCC" Margin="0,2"/>
                 </Grid>
-                <Button Content="Choose folder..." Click="ChooseFolder_Click" Margin="0,0,0,8"/>
-                <Button Content="Close" Click="SaveSettings_Click"/>
+                <Button Style="{StaticResource OverlayButton}" Content="Choose folder..." Click="ChooseFolder_Click" Margin="0,0,0,8"/>
+                <Button Style="{StaticResource OverlayButton}" Content="Close" Click="SaveSettings_Click"/>
             </StackPanel>
         </Border>
     </Grid>
