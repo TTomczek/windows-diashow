@@ -8,10 +8,12 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Button = System.Windows.Controls.Button;
 using Color = System.Windows.Media.Color;
+using Cursors = System.Windows.Input.Cursors;
 using FontFamily = System.Windows.Media.FontFamily;
 using Forms = System.Windows.Forms;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+using Point = System.Windows.Point;
 
 namespace diashow;
 
@@ -30,6 +32,7 @@ public partial class MainWindow : Window
     private bool _paused;
     private bool _currentVideoAudible;
     private bool _settingsUiReady;
+    private Point? _lastMousePosition;
     private DispatcherTimer? _gifTimer;
     private IReadOnlyList<BitmapSource>? _gifFrames;
     private IReadOnlyList<TimeSpan>? _gifDelays;
@@ -41,7 +44,11 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _requestedPath = args.FirstOrDefault();
-        _controlsTimer.Tick += (_, _) => Controls.Opacity = 0;
+        _controlsTimer.Tick += (_, _) =>
+        {
+            Controls.Opacity = 0;
+            Cursor = Cursors.None;
+        };
         _videoProgressTimer.Tick += (_, _) => UpdateVideoProgress();
         VideoView.Volume = 0;
         ExplorerIntegration.Install();
@@ -50,6 +57,8 @@ public partial class MainWindow : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        _lastMousePosition = Mouse.GetPosition(this);
+        _controlsTimer.Start();
         if (_settings.StartFullscreen) SetFullscreen(true);
         var input = ResolveInput(_requestedPath);
         if (input is null)
@@ -455,6 +464,12 @@ public partial class MainWindow : Window
 
     private void Window_MouseMove(object sender, MouseEventArgs e)
     {
+        var mousePosition = e.GetPosition(this);
+        if (_lastMousePosition == mousePosition)
+            return;
+
+        _lastMousePosition = mousePosition;
+        Cursor = null;
         Controls.Opacity = 1;
         _controlsTimer.Stop();
         _controlsTimer.Start();
