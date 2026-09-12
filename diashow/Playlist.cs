@@ -22,6 +22,8 @@ public sealed class Playlist
         _all = items.ToList();
         _order = order;
         _includeVideos = includeVideos;
+        if (_order == PlaybackOrder.Filename)
+            _all.Sort(static (left, right) => StringComparer.CurrentCultureIgnoreCase.Compare(left.Path, right.Path));
         RebuildUnseen();
     }
 

@@ -30,11 +30,14 @@ public sealed class AppSettings
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "diashow", "settings.json");
 
     public static AppSettings Load()
+        => Load(FilePath);
+
+    public static AppSettings Load(string filePath)
     {
         try
         {
-            if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
+            if (File.Exists(filePath))
+                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(filePath)) ?? new AppSettings();
         }
         catch (JsonException) { }
         catch (IOException) { }
@@ -42,8 +45,11 @@ public sealed class AppSettings
     }
 
     public void Save()
+        => Save(FilePath);
+
+    public void Save(string filePath)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-        File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        File.WriteAllText(filePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
     }
 }
