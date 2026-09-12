@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -34,6 +35,7 @@ public partial class MainWindow : Window
     private bool _paused;
     private bool _currentVideoAudible;
     private bool _settingsUiReady;
+    private string? _emptyMessageKey;
     private Point? _lastMousePosition;
     private DispatcherTimer? _gifTimer;
     private IReadOnlyList<BitmapSource>? _gifFrames;
@@ -58,6 +60,8 @@ public partial class MainWindow : Window
         _videoProgressTimer.Tick += (_, _) => UpdateVideoProgress();
         VideoView.Volume = 0;
         ExplorerIntegration.Install();
+        Localization.SetLanguage(_settings.Language);
+        ApplyLocalization();
         ApplySettingsToUi();
     }
 
@@ -69,7 +73,7 @@ public partial class MainWindow : Window
         var input = ResolveInput(_requestedPath);
         if (input is null)
         {
-            ShowMessage("Choose a folder to start a slideshow.");
+            ShowMessage("ChooseFolderMessage");
             return;
         }
         _ = LoadFolderAsync(input.Value.Folder, input.Value.StartFile);
@@ -154,7 +158,7 @@ public partial class MainWindow : Window
                 ShowItem(first);
             }
             else
-                ShowMessage("No playable media was found in this folder.");
+                ShowMessage("NoMediaMessage");
         }
     }
 
@@ -186,10 +190,11 @@ public partial class MainWindow : Window
         StopGif();
         _playbackCancellation = new CancellationTokenSource();
         _currentVideoAudible = false;
-        SetButtonIcon(AudioButton, "\uE767", "Unmute");
+        SetButtonIcon(AudioButton, "\uE767", Localization.Get("Unmute"));
         var relativePath = _rootFolder is null ? item.Path : Path.GetRelativePath(_rootFolder, item.Path);
         PathBanner.Text = relativePath.Replace('\\', '/').Replace("/", " / ");
-        var mediaName = $"{(item.Kind == MediaKind.Image ? "Image" : "Video")}: {Path.GetFileName(item.Path)}";
+        var mediaName = Localization.Get("MediaName",
+            Localization.Get(item.Kind == MediaKind.Image ? "Image" : "Video"), Path.GetFileName(item.Path));
         AutomationProperties.SetName(ImageView, mediaName);
         AutomationProperties.SetName(VideoView, mediaName);
         UpdateItemCounter();
@@ -251,7 +256,7 @@ public partial class MainWindow : Window
             AnimateTransition(VideoView);
             PreloadUpcoming();
         }
-        SetButtonIcon(PauseButton, "\uE769", "Pause");
+        SetButtonIcon(PauseButton, "\uE769", Localization.Get("Pause"));
         _paused = false;
     }
 
@@ -428,7 +433,7 @@ public partial class MainWindow : Window
         ImageView.Source = null;
         ImageView.Visibility = Visibility.Collapsed;
         VideoView.Visibility = Visibility.Collapsed;
-        ShowMessage("No playable media was found in this folder.");
+        ShowMessage("NoMediaMessage");
     }
 
     private void GoPrevious()
@@ -443,7 +448,8 @@ public partial class MainWindow : Window
         {
             if (_paused) VideoView.Pause(); else VideoView.Play();
         }
-        SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769", _paused ? "Resume" : "Pause");
+        SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769",
+            Localization.Get(_paused ? "Resume" : "Pause"));
     }
 
     private void ToggleMediaFilter()
@@ -479,10 +485,66 @@ public partial class MainWindow : Window
             TimeSpan.FromSeconds(Math.Max(0.05, _settings.FadeDurationSeconds))));
     }
 
-    private void ShowMessage(string message)
+    private void ShowMessage(string localizationKey)
     {
-        EmptyMessage.Text = message;
+        _emptyMessageKey = localizationKey;
+        EmptyMessage.Text = Localization.Get(localizationKey);
         EmptyState.Visibility = Visibility.Visible;
+    }
+
+    private void ApplyLocalization()
+    {
+        Title = Localization.Get("Title");
+        ChooseFolderButton.Content = Localization.Get("ChooseFolder");
+        ChooseFolderSettingsButton.Content = Localization.Get("ChooseFolder");
+        CloseSettingsButton.Content = Localization.Get("Close");
+        SettingsButton.ToolTip = Localization.Get("Settings");
+        AutomationProperties.SetName(SettingsButton, Localization.Get("Settings"));
+        SettingsTitle.Text = Localization.Get("Settings");
+        ImageDurationLabel.Text = Localization.Get("ImageDuration");
+        DurationBox.SetValue(AutomationProperties.NameProperty, Localization.Get("ImageDurationAutomation"));
+        PlaybackOrderLabel.Text = Localization.Get("PlaybackOrder");
+        OrderBox.SetValue(AutomationProperties.NameProperty, Localization.Get("PlaybackOrder"));
+        FilenameOrderItem.Content = Localization.Get("FilenameOrder");
+        RandomShuffleItem.Content = Localization.Get("RandomShuffle");
+        TransitionLabel.Text = Localization.Get("Transition");
+        TransitionBox.SetValue(AutomationProperties.NameProperty, Localization.Get("Transition"));
+        InstantSwitchItem.Content = Localization.Get("InstantSwitch");
+        SimpleFadeItem.Content = Localization.Get("SimpleFade");
+        FadeDurationLabel.Text = Localization.Get("FadeDuration");
+        FadeBox.SetValue(AutomationProperties.NameProperty, Localization.Get("FadeDurationAutomation"));
+        PreloadBox.Content = Localization.Get("Preload");
+        LanguageLabel.Text = Localization.Get("Language");
+        LanguageBox.SetValue(AutomationProperties.NameProperty, Localization.Get("Language"));
+        KeyboardShortcutsLabel.Text = Localization.Get("KeyboardShortcuts");
+        PauseOrResumeShortcut.Text = Localization.Get("PauseOrResume");
+        PreviousNextShortcut.Text = Localization.Get("PreviousNext");
+        SeekShortcut.Text = Localization.Get("Seek");
+        FullscreenShortcut.Text = Localization.Get("ToggleFullscreen");
+        MediaShortcut.Text = Localization.Get("CycleMedia");
+        MuteShortcut.Text = Localization.Get("MuteVideo");
+        CloseShortcut.Text = Localization.Get("CloseSettings");
+        RevealShortcut.Text = Localization.Get("RevealCurrent");
+        AccessToastDismissHint.Text = Localization.Get("PressToDismiss");
+        AccessToast.SetValue(AutomationProperties.NameProperty, Localization.Get("DismissFileError"));
+        VideoProgress.ToolTip = Localization.Get("VideoPosition");
+        SetButtonIcon(PreviousButton, "\uE100", Localization.Get("PreviousItem"));
+        SetButtonIcon(NextButton, "\uE101", Localization.Get("NextItem"));
+        SetButtonIcon(RevealButton, "\uE8B7", Localization.Get("Reveal"));
+        SetButtonIcon(FullscreenButton, "\uE740", Localization.Get("ToggleFullscreen"));
+        SetButtonIcon(AudioButton, _currentVideoAudible ? "\uE74F" : "\uE767",
+            Localization.Get(_currentVideoAudible ? "Mute" : "Unmute"));
+        SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769",
+            Localization.Get(_paused ? "Resume" : "Pause"));
+        if (_emptyMessageKey is not null)
+            EmptyMessage.Text = Localization.Get(_emptyMessageKey);
+        LanguageBox.SelectedIndex = Localization.Current switch
+        {
+            AppLanguage.German => 1,
+            AppLanguage.Spanish => 2,
+            _ => 0
+        };
+        UpdateVideoToggle();
     }
 
     private void UpdateItemCounter()
@@ -503,7 +565,6 @@ public partial class MainWindow : Window
         OrderBox.SelectedIndex = _settings.Order == PlaybackOrder.Random ? 1 : 0;
         TransitionBox.SelectedIndex = _settings.Transition == TransitionMode.Fade ? 1 : 0;
         PreloadBox.IsChecked = _settings.PreloadEnabled;
-        UpdateVideoToggle();
         _settingsUiReady = true;
     }
 
@@ -511,9 +572,9 @@ public partial class MainWindow : Window
     {
         var (icon, tooltip) = _settings.MediaFilter switch
         {
-            MediaFilter.Images => ("\uE91B", "Images only - click for videos only"),
-            MediaFilter.Videos => ("\uE714", "Videos only - click for images and videos"),
-            _ => ("\uE91B\uE714", "Images and videos - click for images only")
+            MediaFilter.Images => ("\uE91B", Localization.Get("ImagesOnly")),
+            MediaFilter.Videos => ("\uE714", Localization.Get("VideosOnly")),
+            _ => ("\uE91B\uE714", Localization.Get("ImagesAndVideos"))
         };
         VideoToggle.Content = icon;
         VideoToggle.ToolTip = tooltip;
@@ -597,11 +658,11 @@ public partial class MainWindow : Window
 
     private void ShowAccessToast(string path, Exception? exception)
     {
-        var errorType = exception?.GetType().Name ?? "UnknownError";
+        var errorType = exception?.GetType().Name ?? Localization.Get("UnknownError");
         var errorMessage = exception is null || string.IsNullOrWhiteSpace(exception.Message)
             ? string.Empty
             : $"{exception.Message}\n";
-        ShowToast($"File error: {errorType}", $"{errorMessage}{Path.GetFileName(path)}\n{path}");
+        ShowToast(Localization.Get("FileError", errorType), $"{errorMessage}{Path.GetFileName(path)}\n{path}");
     }
 
     private void ShowToast(string type, string message)
@@ -706,7 +767,7 @@ public partial class MainWindow : Window
         _currentVideoAudible = !_currentVideoAudible;
         VideoView.Volume = _currentVideoAudible ? 1 : 0;
         SetButtonIcon(AudioButton, _currentVideoAudible ? "\uE74F" : "\uE767",
-            _currentVideoAudible ? "Mute" : "Unmute");
+            Localization.Get(_currentVideoAudible ? "Mute" : "Unmute"));
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e) =>
@@ -740,6 +801,19 @@ public partial class MainWindow : Window
             SaveSettingsFromUi();
     }
 
+    private void LanguageBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_settingsUiReady ||
+            LanguageBox.SelectedItem is not ComboBoxItem { Tag: string languageCode } ||
+            Localization.Parse(languageCode) is not { } language)
+            return;
+
+        _settings.Language = Localization.Code(language);
+        Localization.SetLanguage(_settings.Language);
+        _settings.Save();
+        ApplyLocalization();
+    }
+
     private void SaveSettingsFromUi()
     {
         if (double.TryParse(DurationBox.Text, out var duration))
@@ -757,7 +831,7 @@ public partial class MainWindow : Window
     {
         using var dialog = new FolderBrowserDialog
         {
-            Description = "Choose a folder for the slideshow",
+            Description = Localization.Get("ChooseFolderDescription"),
             SelectedPath = _settings.LastFolder ?? Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
         };
         if (dialog.ShowDialog() == Forms.DialogResult.OK)

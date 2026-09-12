@@ -188,7 +188,7 @@
                     Visibility="Collapsed">
             <TextBlock x:Name="EmptyMessage" Foreground="White" FontSize="24"
                        TextAlignment="Center" Margin="0,0,0,14"/>
-            <Button Style="{StaticResource OverlayButton}" Content="Choose folder..." Click="ChooseFolder_Click"
+            <Button x:Name="ChooseFolderButton" Style="{StaticResource OverlayButton}" Content="Choose folder..." Click="ChooseFolder_Click"
                     HorizontalAlignment="Center" Padding="16,7"/>
         </StackPanel>
         <Border Background="#66000000" Padding="16,10"
@@ -216,7 +216,7 @@
                            FontWeight="SemiBold"/>
                 <TextBlock x:Name="AccessToastMessage" Foreground="White" FontSize="13"
                            Margin="0,4,0,0" TextWrapping="Wrap"/>
-                <TextBlock Text="Press Enter, Space, or click to dismiss" Foreground="#DDFFFFFF" FontSize="11"
+                <TextBlock x:Name="AccessToastDismissHint" Text="Press Enter, Space, or click to dismiss" Foreground="#DDFFFFFF" FontSize="11"
                            Margin="0,6,0,0"/>
             </StackPanel>
         </Button>
@@ -236,27 +236,27 @@
                         PreviewMouseLeftButtonDown="VideoProgress_PreviewMouseLeftButtonDown"
                         PreviewKeyDown="VideoProgress_PreviewKeyDown"/>
                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
-                    <Button Style="{StaticResource IconButton}" Content="&#xE100;" FontFamily="Segoe MDL2 Assets" ToolTip="Previous"
+                    <Button x:Name="PreviousButton" Style="{StaticResource IconButton}" Content="&#xE100;" FontFamily="Segoe MDL2 Assets" ToolTip="Previous"
                             AutomationProperties.Name="Previous item"
                             Click="Previous_Click"/>
                     <Button x:Name="PauseButton" Style="{StaticResource IconButton}" Content="&#xE769;" FontFamily="Segoe MDL2 Assets"
                             ToolTip="Pause" AutomationProperties.Name="Pause" Click="Pause_Click"/>
-                    <Button Style="{StaticResource IconButton}" Content="&#xE101;" FontFamily="Segoe MDL2 Assets" ToolTip="Next"
+                    <Button x:Name="NextButton" Style="{StaticResource IconButton}" Content="&#xE101;" FontFamily="Segoe MDL2 Assets" ToolTip="Next"
                             AutomationProperties.Name="Next item"
                             Click="Next_Click"/>
                     <Button x:Name="AudioButton" Style="{StaticResource IconButton}" Content="&#xE767;" FontFamily="Segoe MDL2 Assets"
                             ToolTip="Unmute" AutomationProperties.Name="Unmute" Click="Audio_Click"/>
-                    <Button Style="{StaticResource IconButton}" Content="&#xE8B7;" FontFamily="Segoe MDL2 Assets"
+                    <Button x:Name="RevealButton" Style="{StaticResource IconButton}" Content="&#xE8B7;" FontFamily="Segoe MDL2 Assets"
                             ToolTip="Reveal in explorer" AutomationProperties.Name="Reveal current file in Explorer"
                             Click="RevealInExplorer_Click"/>
-                    <Button Style="{StaticResource IconButton}" Content="&#xE740;" FontFamily="Segoe MDL2 Assets" ToolTip="Fullscreen"
+                    <Button x:Name="FullscreenButton" Style="{StaticResource IconButton}" Content="&#xE740;" FontFamily="Segoe MDL2 Assets" ToolTip="Fullscreen"
                             AutomationProperties.Name="Toggle fullscreen" Click="Fullscreen_Click"/>
                 </StackPanel>
                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="VideoToggle" Style="{StaticResource CompactIconButton}"
                             FontFamily="Segoe MDL2 Assets" ToolTip="Cycle media filter"
                             AutomationProperties.Name="Cycle media filter" Click="VideoToggle_Click"/>
-                    <Button Style="{StaticResource CompactIconButton}" Content="&#xE713;"
+                    <Button x:Name="SettingsButton" Style="{StaticResource CompactIconButton}" Content="&#xE713;"
                             FontFamily="Segoe MDL2 Assets" ToolTip="Settings"
                             AutomationProperties.Name="Settings" Click="Settings_Click"/>
                 </StackPanel>
@@ -267,35 +267,43 @@
                 Width="360" HorizontalAlignment="Right" VerticalAlignment="Top"
                 Visibility="Collapsed">
             <StackPanel>
-                <TextBlock Text="Settings" Foreground="White" FontSize="22" Margin="0,0,0,16"/>
-                <TextBlock Text="Image duration (seconds)" Foreground="White"/>
+                <TextBlock x:Name="SettingsTitle" Text="Settings" Foreground="White" FontSize="22" Margin="0,0,0,16"/>
+                <TextBlock x:Name="ImageDurationLabel" Text="Image duration (seconds)" Foreground="White"/>
                 <TextBox x:Name="DurationBox" Margin="0,4,0,12"
                          AutomationProperties.Name="Image duration in seconds"
                          TextChanged="SettingsControl_Changed"
                          LostFocus="SettingsControl_LostFocus"/>
-                <TextBlock Text="Playback order" Foreground="White"/>
+                <TextBlock x:Name="PlaybackOrderLabel" Text="Playback order" Foreground="White"/>
                 <ComboBox x:Name="OrderBox" Margin="0,4,0,12"
                           AutomationProperties.Name="Playback order"
                           SelectionChanged="SettingsControl_Changed">
-                    <ComboBoxItem Content="Filename order"/>
-                    <ComboBoxItem Content="Random shuffle"/>
+                    <ComboBoxItem x:Name="FilenameOrderItem" Content="Filename order"/>
+                    <ComboBoxItem x:Name="RandomShuffleItem" Content="Random shuffle"/>
                 </ComboBox>
-                <TextBlock Text="Transition" Foreground="White"/>
+                <TextBlock x:Name="TransitionLabel" Text="Transition" Foreground="White"/>
                 <ComboBox x:Name="TransitionBox" Margin="0,4,0,12"
                           AutomationProperties.Name="Transition"
                           SelectionChanged="SettingsControl_Changed">
-                    <ComboBoxItem Content="Instant switch"/>
-                    <ComboBoxItem Content="Simple fade"/>
+                    <ComboBoxItem x:Name="InstantSwitchItem" Content="Instant switch"/>
+                    <ComboBoxItem x:Name="SimpleFadeItem" Content="Simple fade"/>
                 </ComboBox>
-                <TextBlock Text="Fade duration (seconds)" Foreground="White"/>
+                <TextBlock x:Name="FadeDurationLabel" Text="Fade duration (seconds)" Foreground="White"/>
                 <TextBox x:Name="FadeBox" Margin="0,4,0,18"
                          AutomationProperties.Name="Fade duration in seconds"
                          TextChanged="SettingsControl_Changed"
                          LostFocus="SettingsControl_LostFocus"/>
+                <TextBlock x:Name="LanguageLabel" Text="Language" Foreground="White"/>
+                <ComboBox x:Name="LanguageBox" Margin="0,4,0,12"
+                          AutomationProperties.Name="Language"
+                          SelectionChanged="LanguageBox_SelectionChanged">
+                    <ComboBoxItem Content="English" Tag="en"/>
+                    <ComboBoxItem Content="Deutsch" Tag="de"/>
+                    <ComboBoxItem Content="Español" Tag="es"/>
+                </ComboBox>
                 <CheckBox x:Name="PreloadBox" Content="Preload upcoming images"
                           Foreground="White" Margin="0,0,0,8"
                           Checked="SettingsControl_Changed" Unchecked="SettingsControl_Changed"/>
-                <TextBlock Text="Keyboard shortcuts" Foreground="White" FontSize="18"
+                <TextBlock x:Name="KeyboardShortcutsLabel" Text="Keyboard shortcuts" Foreground="White" FontSize="18"
                            Margin="0,8,0,8"/>
                 <Grid Margin="0,0,0,16">
                     <Grid.ColumnDefinitions>
@@ -313,24 +321,24 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Text="Space" Foreground="White" Margin="0,2,16,2"/>
-                    <TextBlock Grid.Column="1" Text="Pause or resume" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock x:Name="PauseOrResumeShortcut" Grid.Column="1" Text="Pause or resume" Foreground="#FFCCCCCC" Margin="0,2"/>
                     <TextBlock Grid.Row="1" Text="Left / Right" Foreground="White" Margin="0,2,16,2"/>
-                    <TextBlock Grid.Row="1" Grid.Column="1" Text="Previous / next item" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock x:Name="PreviousNextShortcut" Grid.Row="1" Grid.Column="1" Text="Previous / next item" Foreground="#FFCCCCCC" Margin="0,2"/>
                     <TextBlock Grid.Row="2" Text="Slider arrows" Foreground="White" Margin="0,2,16,2"/>
-                    <TextBlock Grid.Row="2" Grid.Column="1" Text="Seek 10 seconds" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock x:Name="SeekShortcut" Grid.Row="2" Grid.Column="1" Text="Seek 10 seconds" Foreground="#FFCCCCCC" Margin="0,2"/>
                     <TextBlock Grid.Row="3" Text="F" Foreground="White" Margin="0,2,16,2"/>
-                    <TextBlock Grid.Row="3" Grid.Column="1" Text="Toggle fullscreen" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock x:Name="FullscreenShortcut" Grid.Row="3" Grid.Column="1" Text="Toggle fullscreen" Foreground="#FFCCCCCC" Margin="0,2"/>
                     <TextBlock Grid.Row="4" Text="V" Foreground="White" Margin="0,2,16,2"/>
-                    <TextBlock Grid.Row="4" Grid.Column="1" Text="Cycle images, videos, or both" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock x:Name="MediaShortcut" Grid.Row="4" Grid.Column="1" Text="Cycle images, videos, or both" Foreground="#FFCCCCCC" Margin="0,2"/>
                     <TextBlock Grid.Row="5" Text="M" Foreground="White" Margin="0,2,16,2"/>
-                    <TextBlock Grid.Row="5" Grid.Column="1" Text="Mute or unmute video" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock x:Name="MuteShortcut" Grid.Row="5" Grid.Column="1" Text="Mute or unmute video" Foreground="#FFCCCCCC" Margin="0,2"/>
                     <TextBlock Grid.Row="6" Text="Escape" Foreground="White" Margin="0,2,16,2"/>
-                    <TextBlock Grid.Row="6" Grid.Column="1" Text="Close settings or exit fullscreen" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock x:Name="CloseShortcut" Grid.Row="6" Grid.Column="1" Text="Close settings or exit fullscreen" Foreground="#FFCCCCCC" Margin="0,2"/>
                     <TextBlock Grid.Row="7" Text="E" Foreground="White" Margin="0,2,16,2"/>
-                    <TextBlock Grid.Row="7" Grid.Column="1" Text="Reveal current file in Explorer" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock x:Name="RevealShortcut" Grid.Row="7" Grid.Column="1" Text="Reveal current file in Explorer" Foreground="#FFCCCCCC" Margin="0,2"/>
                 </Grid>
-                <Button Style="{StaticResource OverlayButton}" Content="Choose folder..." Click="ChooseFolder_Click" Margin="0,0,0,8"/>
-                <Button Style="{StaticResource OverlayButton}" Content="Close" Click="SaveSettings_Click"/>
+                <Button x:Name="ChooseFolderSettingsButton" Style="{StaticResource OverlayButton}" Content="Choose folder..." Click="ChooseFolder_Click" Margin="0,0,0,8"/>
+                <Button x:Name="CloseSettingsButton" Style="{StaticResource OverlayButton}" Content="Close" Click="SaveSettings_Click"/>
             </StackPanel>
         </Border>
     </Grid>

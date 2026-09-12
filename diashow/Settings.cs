@@ -23,6 +23,7 @@ public enum MediaFilter
 
 public sealed class AppSettings
 {
+    public string? Language { get; set; }
     public double ImageDurationSeconds { get; set; } = 5;
     public bool StartFullscreen { get; set; }
     public PlaybackOrder Order { get; set; } = PlaybackOrder.Filename;

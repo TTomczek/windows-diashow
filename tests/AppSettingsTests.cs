@@ -7,6 +7,7 @@ public sealed class AppSettingsTests
     {
         var settings = new AppSettings();
 
+        Assert.Null(settings.Language);
         Assert.Equal(5, settings.ImageDurationSeconds);
         Assert.Equal(PlaybackOrder.Filename, settings.Order);
         Assert.Equal(MediaFilter.Both, settings.MediaFilter);
@@ -23,6 +24,7 @@ public sealed class AppSettingsTests
         var expected = new AppSettings
         {
             ImageDurationSeconds = 12.5,
+            Language = "de",
             StartFullscreen = true,
             Order = PlaybackOrder.Random,
             MediaFilter = MediaFilter.Images,
@@ -37,6 +39,7 @@ public sealed class AppSettingsTests
         var actual = AppSettings.Load(path);
 
         Assert.Equal(expected.ImageDurationSeconds, actual.ImageDurationSeconds);
+        Assert.Equal(expected.Language, actual.Language);
         Assert.Equal(expected.StartFullscreen, actual.StartFullscreen);
         Assert.Equal(expected.Order, actual.Order);
         Assert.Equal(expected.MediaFilter, actual.MediaFilter);
