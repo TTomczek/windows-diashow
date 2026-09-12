@@ -66,13 +66,21 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.version }}
         run: |
           git fetch --tags --force
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Fetching tags failed.'
+          }
           if (git show-ref --tags --verify --quiet "refs/tags/$env:RELEASE_TAG") {
             throw "Tag $env:RELEASE_TAG already exists."
           }
           gh release view $env:RELEASE_TAG *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releaseLookupExitCode = $LASTEXITCODE
+          if ($releaseLookupExitCode -eq 0) {
             throw "Release $env:RELEASE_TAG already exists."
           }
+          if ($releaseLookupExitCode -ne 1) {
+            throw "Could not determine whether release $env:RELEASE_TAG exists."
+          }
+          $global:LASTEXITCODE = 0
 
       - name: Create master release
         if: github.ref == 'refs/heads/master'
