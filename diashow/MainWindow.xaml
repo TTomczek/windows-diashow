@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Diashow" Icon="{StaticResource AppIcon}" Width="1100" Height="700" Background="#101014"
         ToolTipService.IsEnabled="False"
-        KeyDown="Window_KeyDown" MouseMove="Window_MouseMove"
+        KeyDown="Window_KeyDown" PreviewKeyDown="Window_PreviewKeyDown" MouseMove="Window_MouseMove"
         Loaded="Window_Loaded" Closing="Window_Closing">
     <Grid x:Name="Root">
         <Grid.Resources>
@@ -33,6 +33,10 @@
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
                                     <Setter Property="Background" Value="#99FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter Property="BorderBrush" Value="White"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -67,6 +71,10 @@
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
                                     <Setter Property="Background" Value="#99FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter Property="BorderBrush" Value="White"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -169,9 +177,11 @@
                 <Setter Property="Padding" Value="5,3"/>
             </Style>
         </Grid.Resources>
-        <Image x:Name="ImageView" Stretch="Uniform" Visibility="Collapsed"/>
+        <Image x:Name="ImageView" Stretch="Uniform" Visibility="Collapsed"
+               AutomationProperties.LiveSetting="Polite"/>
         <MediaElement x:Name="VideoView" Stretch="Uniform" Visibility="Collapsed"
                       LoadedBehavior="Manual" UnloadedBehavior="Manual"
+                      AutomationProperties.LiveSetting="Polite"
                       MediaOpened="VideoView_MediaOpened"
                       MediaEnded="VideoView_MediaEnded" MediaFailed="VideoView_MediaFailed"/>
         <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -194,19 +204,22 @@
                            TextTrimming="CharacterEllipsis"/>
             </Grid>
         </Border>
-        <Border x:Name="AccessToast" Background="#E0A51D1D" Padding="16,12"
-                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,58,16,0"
-                MaxWidth="620" Visibility="Collapsed" Cursor="Hand"
-                MouseLeftButtonUp="AccessToast_Click" Panel.ZIndex="10">
+        <Button x:Name="AccessToast" Background="#E0A51D1D" BorderThickness="0"
+                Padding="16,12" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="0,58,16,0" MaxWidth="620" Visibility="Collapsed"
+                Click="AccessToast_Click" Panel.ZIndex="10"
+                AutomationProperties.Name="Dismiss file error notification"
+                AutomationProperties.LiveSetting="Assertive"
+                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
             <StackPanel>
                 <TextBlock x:Name="AccessToastType" Foreground="White" FontSize="15"
                            FontWeight="SemiBold"/>
                 <TextBlock x:Name="AccessToastMessage" Foreground="White" FontSize="13"
                            Margin="0,4,0,0" TextWrapping="Wrap"/>
-                <TextBlock Text="Click to dismiss" Foreground="#DDFFFFFF" FontSize="11"
+                <TextBlock Text="Press Enter, Space, or click to dismiss" Foreground="#DDFFFFFF" FontSize="11"
                            Margin="0,6,0,0"/>
             </StackPanel>
-        </Border>
+        </Button>
 
         <Border x:Name="Controls" Background="#CC17171C" Padding="14"
                 VerticalAlignment="Bottom" Opacity="0">
@@ -224,23 +237,28 @@
                         PreviewKeyDown="VideoProgress_PreviewKeyDown"/>
                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
                     <Button Style="{StaticResource IconButton}" Content="&#xE100;" FontFamily="Segoe MDL2 Assets" ToolTip="Previous"
+                            AutomationProperties.Name="Previous item"
                             Click="Previous_Click"/>
                     <Button x:Name="PauseButton" Style="{StaticResource IconButton}" Content="&#xE769;" FontFamily="Segoe MDL2 Assets"
-                            ToolTip="Pause" Click="Pause_Click"/>
+                            ToolTip="Pause" AutomationProperties.Name="Pause" Click="Pause_Click"/>
                     <Button Style="{StaticResource IconButton}" Content="&#xE101;" FontFamily="Segoe MDL2 Assets" ToolTip="Next"
+                            AutomationProperties.Name="Next item"
                             Click="Next_Click"/>
                     <Button x:Name="AudioButton" Style="{StaticResource IconButton}" Content="&#xE767;" FontFamily="Segoe MDL2 Assets"
-                            ToolTip="Unmute" Click="Audio_Click"/>
+                            ToolTip="Unmute" AutomationProperties.Name="Unmute" Click="Audio_Click"/>
                     <Button Style="{StaticResource IconButton}" Content="&#xE8B7;" FontFamily="Segoe MDL2 Assets"
-                            ToolTip="Reveal in explorer" Click="RevealInExplorer_Click"/>
+                            ToolTip="Reveal in explorer" AutomationProperties.Name="Reveal current file in Explorer"
+                            Click="RevealInExplorer_Click"/>
                     <Button Style="{StaticResource IconButton}" Content="&#xE740;" FontFamily="Segoe MDL2 Assets" ToolTip="Fullscreen"
-                            Click="Fullscreen_Click"/>
+                            AutomationProperties.Name="Toggle fullscreen" Click="Fullscreen_Click"/>
                 </StackPanel>
                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="VideoToggle" Style="{StaticResource CompactIconButton}"
-                            FontFamily="Segoe MDL2 Assets" ToolTip="Cycle media filter" Click="VideoToggle_Click"/>
+                            FontFamily="Segoe MDL2 Assets" ToolTip="Cycle media filter"
+                            AutomationProperties.Name="Cycle media filter" Click="VideoToggle_Click"/>
                     <Button Style="{StaticResource CompactIconButton}" Content="&#xE713;"
-                            FontFamily="Segoe MDL2 Assets" ToolTip="Settings" Click="Settings_Click"/>
+                            FontFamily="Segoe MDL2 Assets" ToolTip="Settings"
+                            AutomationProperties.Name="Settings" Click="Settings_Click"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -251,20 +269,28 @@
             <StackPanel>
                 <TextBlock Text="Settings" Foreground="White" FontSize="22" Margin="0,0,0,16"/>
                 <TextBlock Text="Image duration (seconds)" Foreground="White"/>
-                <TextBox x:Name="DurationBox" Margin="0,4,0,12" TextChanged="SettingsControl_Changed"
+                <TextBox x:Name="DurationBox" Margin="0,4,0,12"
+                         AutomationProperties.Name="Image duration in seconds"
+                         TextChanged="SettingsControl_Changed"
                          LostFocus="SettingsControl_LostFocus"/>
                 <TextBlock Text="Playback order" Foreground="White"/>
-                <ComboBox x:Name="OrderBox" Margin="0,4,0,12" SelectionChanged="SettingsControl_Changed">
+                <ComboBox x:Name="OrderBox" Margin="0,4,0,12"
+                          AutomationProperties.Name="Playback order"
+                          SelectionChanged="SettingsControl_Changed">
                     <ComboBoxItem Content="Filename order"/>
                     <ComboBoxItem Content="Random shuffle"/>
                 </ComboBox>
                 <TextBlock Text="Transition" Foreground="White"/>
-                <ComboBox x:Name="TransitionBox" Margin="0,4,0,12" SelectionChanged="SettingsControl_Changed">
+                <ComboBox x:Name="TransitionBox" Margin="0,4,0,12"
+                          AutomationProperties.Name="Transition"
+                          SelectionChanged="SettingsControl_Changed">
                     <ComboBoxItem Content="Instant switch"/>
                     <ComboBoxItem Content="Simple fade"/>
                 </ComboBox>
                 <TextBlock Text="Fade duration (seconds)" Foreground="White"/>
-                <TextBox x:Name="FadeBox" Margin="0,4,0,18" TextChanged="SettingsControl_Changed"
+                <TextBox x:Name="FadeBox" Margin="0,4,0,18"
+                         AutomationProperties.Name="Fade duration in seconds"
+                         TextChanged="SettingsControl_Changed"
                          LostFocus="SettingsControl_LostFocus"/>
                 <CheckBox x:Name="PreloadBox" Content="Preload upcoming images"
                           Foreground="White" Margin="0,0,0,8"

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -47,7 +48,11 @@ public partial class MainWindow : Window
         _requestedPath = args.FirstOrDefault();
         _controlsTimer.Tick += (_, _) =>
         {
-            Controls.Opacity = 0;
+            if (!Controls.IsKeyboardFocusWithin)
+            {
+                Controls.Opacity = 0;
+                Controls.IsEnabled = false;
+            }
             Cursor = Cursors.None;
         };
         _videoProgressTimer.Tick += (_, _) => UpdateVideoProgress();
@@ -184,6 +189,9 @@ public partial class MainWindow : Window
         SetButtonIcon(AudioButton, "\uE767", "Unmute");
         var relativePath = _rootFolder is null ? item.Path : Path.GetRelativePath(_rootFolder, item.Path);
         PathBanner.Text = relativePath.Replace('\\', '/').Replace("/", " / ");
+        var mediaName = $"{(item.Kind == MediaKind.Image ? "Image" : "Video")}: {Path.GetFileName(item.Path)}";
+        AutomationProperties.SetName(ImageView, mediaName);
+        AutomationProperties.SetName(VideoView, mediaName);
         UpdateItemCounter();
         if (item.Kind == MediaKind.Image)
         {
@@ -509,6 +517,7 @@ public partial class MainWindow : Window
         };
         VideoToggle.Content = icon;
         VideoToggle.ToolTip = tooltip;
+        AutomationProperties.SetName(VideoToggle, tooltip);
         VideoToggle.FontSize = _settings.MediaFilter == MediaFilter.Both ? 11 : 17;
         VideoToggle.Opacity = 1;
         VideoToggle.Background = _settings.MediaFilter == MediaFilter.Both
@@ -531,10 +540,20 @@ public partial class MainWindow : Window
             return;
 
         _lastMousePosition = mousePosition;
-        Cursor = null;
+        Cursor = Cursors.Arrow;
+        Controls.IsEnabled = true;
         Controls.Opacity = 1;
         _controlsTimer.Stop();
         _controlsTimer.Start();
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Tab && !Controls.IsEnabled)
+        {
+            Controls.IsEnabled = true;
+            Controls.Opacity = 1;
+        }
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
@@ -592,7 +611,7 @@ public partial class MainWindow : Window
         AccessToast.Visibility = Visibility.Visible;
     }
 
-    private void AccessToast_Click(object sender, MouseButtonEventArgs e)
+    private void AccessToast_Click(object sender, RoutedEventArgs e)
     {
         AccessToast.Visibility = Visibility.Collapsed;
         e.Handled = true;
@@ -699,6 +718,7 @@ public partial class MainWindow : Window
         button.Content = glyph;
         button.FontFamily = new FontFamily("Segoe MDL2 Assets");
         button.ToolTip = tooltip;
+        AutomationProperties.SetName(button, tooltip);
     }
 
     private void SaveSettings_Click(object sender, RoutedEventArgs e)
