@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private Playlist? _playlist;
     private CancellationTokenSource? _playbackCancellation;
     private CancellationTokenSource? _scanCancellation;
+    private MediaFolderMonitor? _folderMonitor;
     private string? _requestedPath;
     private string? _rootFolder;
     private bool _paused;
@@ -90,6 +91,10 @@ public partial class MainWindow : Window
         _settings.LastFolder = folder;
         _rootFolder = folder;
         _settings.Save();
+        _folderMonitor?.Dispose();
+        _folderMonitor = new MediaFolderMonitor(folder);
+        _folderMonitor.MediaAdded += FolderMonitor_MediaAdded;
+        _folderMonitor.MediaRemoved += FolderMonitor_MediaRemoved;
         _imagePreloader.Clear();
         _playlist = new Playlist([], _settings.Order, _settings.IncludeVideos);
         ImageView.Source = null;
@@ -147,6 +152,28 @@ public partial class MainWindow : Window
                 ShowMessage("No playable media was found in this folder.");
         }
     }
+
+    private void FolderMonitor_MediaAdded(MediaItem item) =>
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_playlist is null || !File.Exists(item.Path))
+                return;
+            _playlist.AddItems([item]);
+            UpdateItemCounter();
+            PreloadUpcoming();
+        });
+
+    private void FolderMonitor_MediaRemoved(string path) =>
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_playlist is null)
+                return;
+            var currentRemoved = _playlist.RemoveItems([path]);
+            _imagePreloader.Clear();
+            UpdateItemCounter();
+            if (currentRemoved)
+                GoNext();
+        });
 
     private async void ShowItem(MediaItem item)
     {
@@ -380,7 +407,20 @@ public partial class MainWindow : Window
 
     private void GoNext()
     {
-        if (_playlist?.Next() is { } next) ShowItem(next);
+        if (_playlist?.Next() is { } next)
+        {
+            ShowItem(next);
+            return;
+        }
+
+        StopGif();
+        StopVideoProgress();
+        VideoView.Stop();
+        VideoView.Source = null;
+        ImageView.Source = null;
+        ImageView.Visibility = Visibility.Collapsed;
+        VideoView.Visibility = Visibility.Collapsed;
+        ShowMessage("No playable media was found in this folder.");
     }
 
     private void GoPrevious()
@@ -689,6 +729,8 @@ public partial class MainWindow : Window
     {
         _playbackCancellation?.Cancel();
         _scanCancellation?.Cancel();
+        _folderMonitor?.Dispose();
+        _folderMonitor = null;
         StopGif();
         StopVideoProgress();
         VideoView.Stop();

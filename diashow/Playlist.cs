@@ -29,10 +29,29 @@ public sealed class Playlist
 
     public void AddItems(IEnumerable<MediaItem> items)
     {
-        _all.AddRange(items);
+        var existing = _all.Select(static item => item.Path)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _all.AddRange(items.Where(item => existing.Add(item.Path)));
         if (_order == PlaybackOrder.Filename)
             _all.Sort(static (left, right) => StringComparer.CurrentCultureIgnoreCase.Compare(left.Path, right.Path));
         RebuildUnseen();
+    }
+
+    public bool RemoveItems(IEnumerable<string> paths)
+    {
+        var removed = paths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (removed.Count == 0)
+            return false;
+
+        var currentPath = Current?.Path;
+        var removedThroughCurrent = _historyIndex >= 0
+            ? _history.Take(_historyIndex + 1).Count(item => removed.Contains(item.Path))
+            : 0;
+        _all.RemoveAll(item => removed.Contains(item.Path));
+        _history.RemoveAll(item => removed.Contains(item.Path));
+        _historyIndex = Math.Min(_historyIndex - removedThroughCurrent, _history.Count - 1);
+        RebuildUnseen();
+        return currentPath is not null && removed.Contains(currentPath);
     }
 
     public void SetOptions(PlaybackOrder order, bool includeVideos)

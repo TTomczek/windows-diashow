@@ -84,6 +84,23 @@ public sealed class PlaylistTests
     }
 
     [Fact]
+    public void RemoveItems_removes_deleted_current_and_allows_advancing()
+    {
+        var playlist = new Playlist(
+            [Image("a.jpg"), Image("b.jpg"), Image("c.jpg")],
+            PlaybackOrder.Filename,
+            includeVideos: true);
+        Assert.Equal("a.jpg", playlist.Next()!.Path);
+        Assert.Equal("b.jpg", playlist.Next()!.Path);
+
+        Assert.True(playlist.RemoveItems(["b.jpg"]));
+
+        Assert.Equal(2, playlist.TotalCount);
+        Assert.Equal("c.jpg", playlist.Next()!.Path);
+        Assert.DoesNotContain(playlist.PreloadCandidates(10), item => item.Path == "b.jpg");
+    }
+
+    [Fact]
     public void SetOptions_rebuilds_remaining_items_using_new_filter()
     {
         var playlist = new Playlist(

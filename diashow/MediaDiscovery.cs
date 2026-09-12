@@ -79,6 +79,8 @@ public static class MediaDiscovery
         return result;
     }
 
+    public static MediaItem CreateItem(string path) => new(path, GetMediaKind(path));
+
     private static IEnumerable<string> EnumeratePartitions(string folder)
     {
         yield return folder;
