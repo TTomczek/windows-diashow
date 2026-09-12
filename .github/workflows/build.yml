@@ -41,21 +41,36 @@ jobs:
           }
           "version=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Publish self-contained executable
+      - name: Publish self-contained application
         run: >
           dotnet publish diashow/diashow.csproj
           --configuration Release
           --runtime win-x64
           --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
           --no-restore
-          --output publish
+          --output publish/app
 
-      - name: Archive develop executable
+      - name: Publish self-contained installer
+        run: >
+          dotnet publish installer/Diashow.Installer.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          --no-restore
+          --output publish/installer
+
+      - name: Archive develop executables
         if: github.ref == 'refs/heads/develop'
         uses: actions/upload-artifact@v4
         with:
           name: diashow-${{ steps.version.outputs.version }}-develop
-          path: publish/Diashow.exe
+          path: |
+            publish/app/Diashow.exe
+            publish/installer/Diashow.Installer.exe
           if-no-files-found: error
 
       - name: Ensure master release does not already exist
@@ -90,7 +105,8 @@ jobs:
           RELEASE_TAG: ${{ steps.version.outputs.version }}
         run: >
           gh release create $env:RELEASE_TAG
-          publish/Diashow.exe
+          publish/app/Diashow.exe
+          publish/installer/Diashow.Installer.exe
           --title $env:RELEASE_TAG
           --target $env:GITHUB_SHA
           --generate-notes

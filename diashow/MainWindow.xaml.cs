@@ -59,7 +59,6 @@ public partial class MainWindow : Window
         };
         _videoProgressTimer.Tick += (_, _) => UpdateVideoProgress();
         VideoView.Volume = 0;
-        ExplorerIntegration.Install();
         Localization.SetLanguage(_settings.Language);
         ApplyLocalization();
         ApplySettingsToUi();
