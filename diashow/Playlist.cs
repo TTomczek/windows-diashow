@@ -8,23 +8,30 @@ public sealed class Playlist
     private readonly List<MediaItem> _history = [];
     private int _historyIndex = -1;
     private PlaybackOrder _order;
-    private bool _includeVideos;
+    private MediaFilter _mediaFilter;
 
     public MediaItem? Current => _historyIndex >= 0 && _historyIndex < _history.Count ? _history[_historyIndex] : null;
-    public int CurrentPosition => _historyIndex >= 0 ? _historyIndex + 1 : 0;
-    public int TotalCount => _includeVideos ? _all.Count : _all.Count(static item => item.Kind == MediaKind.Image);
+    public int CurrentPosition => _historyIndex >= 0
+        ? _history.Take(_historyIndex + 1).Count(item => IsIncluded(item.Kind))
+        : 0;
+    public int TotalCount => Filtered().Count;
     public bool CanGoBack => _historyIndex > 0;
     public IEnumerable<MediaItem> PreloadCandidates(int count) =>
         new[] { Current }.Concat(_unseen).Where(x => x is not null).Take(Math.Max(0, count) + 1)!;
 
-    public Playlist(IEnumerable<MediaItem> items, PlaybackOrder order, bool includeVideos)
+    public Playlist(IEnumerable<MediaItem> items, PlaybackOrder order, MediaFilter mediaFilter)
     {
         _all = items.ToList();
         _order = order;
-        _includeVideos = includeVideos;
+        _mediaFilter = mediaFilter;
         if (_order == PlaybackOrder.Filename)
             _all.Sort(static (left, right) => StringComparer.CurrentCultureIgnoreCase.Compare(left.Path, right.Path));
         RebuildUnseen();
+    }
+
+    public Playlist(IEnumerable<MediaItem> items, PlaybackOrder order, bool includeVideos)
+        : this(items, order, includeVideos ? MediaFilter.Both : MediaFilter.Images)
+    {
     }
 
     public void AddItems(IEnumerable<MediaItem> items)
@@ -54,12 +61,15 @@ public sealed class Playlist
         return currentPath is not null && removed.Contains(currentPath);
     }
 
-    public void SetOptions(PlaybackOrder order, bool includeVideos)
+    public void SetOptions(PlaybackOrder order, MediaFilter mediaFilter)
     {
         _order = order;
-        _includeVideos = includeVideos;
+        _mediaFilter = mediaFilter;
         RebuildUnseen();
     }
+
+    public void SetOptions(PlaybackOrder order, bool includeVideos) =>
+        SetOptions(order, includeVideos ? MediaFilter.Both : MediaFilter.Images);
 
     public MediaItem? StartAt(string? path)
     {
@@ -114,7 +124,17 @@ public sealed class Playlist
         return _history[--_historyIndex];
     }
 
-    private List<MediaItem> Filtered() => _all.Where(x => _includeVideos || x.Kind == MediaKind.Image).ToList();
+    private List<MediaItem> Filtered() => _all
+        .Where(item => IsIncluded(item.Kind))
+        .ToList();
+
+    private bool IsIncluded(MediaKind kind) =>
+        _mediaFilter switch
+        {
+            MediaFilter.Images => kind == MediaKind.Image,
+            MediaFilter.Videos => kind == MediaKind.Video,
+            _ => true
+        };
 
     private void RebuildUnseen()
     {

@@ -237,8 +237,8 @@
                             Click="Fullscreen_Click"/>
                 </StackPanel>
                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="VideoToggle" Style="{StaticResource CompactIconButton}" Content="&#xE714;"
-                            FontFamily="Segoe MDL2 Assets" ToolTip="Toggle videos" Click="VideoToggle_Click"/>
+                    <Button x:Name="VideoToggle" Style="{StaticResource CompactIconButton}"
+                            FontFamily="Segoe MDL2 Assets" ToolTip="Cycle media filter" Click="VideoToggle_Click"/>
                     <Button Style="{StaticResource CompactIconButton}" Content="&#xE713;"
                             FontFamily="Segoe MDL2 Assets" ToolTip="Settings" Click="Settings_Click"/>
                 </StackPanel>
@@ -295,7 +295,7 @@
                     <TextBlock Grid.Row="3" Text="F" Foreground="White" Margin="0,2,16,2"/>
                     <TextBlock Grid.Row="3" Grid.Column="1" Text="Toggle fullscreen" Foreground="#FFCCCCCC" Margin="0,2"/>
                     <TextBlock Grid.Row="4" Text="V" Foreground="White" Margin="0,2,16,2"/>
-                    <TextBlock Grid.Row="4" Grid.Column="1" Text="Toggle videos" Foreground="#FFCCCCCC" Margin="0,2"/>
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="Cycle images, videos, or both" Foreground="#FFCCCCCC" Margin="0,2"/>
                     <TextBlock Grid.Row="5" Text="M" Foreground="White" Margin="0,2,16,2"/>
                     <TextBlock Grid.Row="5" Grid.Column="1" Text="Mute or unmute video" Foreground="#FFCCCCCC" Margin="0,2"/>
                     <TextBlock Grid.Row="6" Text="Escape" Foreground="White" Margin="0,2,16,2"/>

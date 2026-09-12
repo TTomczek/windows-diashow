@@ -9,7 +9,7 @@ public sealed class AppSettingsTests
 
         Assert.Equal(5, settings.ImageDurationSeconds);
         Assert.Equal(PlaybackOrder.Filename, settings.Order);
-        Assert.True(settings.IncludeVideos);
+        Assert.Equal(MediaFilter.Both, settings.MediaFilter);
         Assert.Equal(TransitionMode.Instant, settings.Transition);
         Assert.True(settings.PreloadEnabled);
         Assert.Equal(4, settings.PreloadCount);
@@ -25,7 +25,7 @@ public sealed class AppSettingsTests
             ImageDurationSeconds = 12.5,
             StartFullscreen = true,
             Order = PlaybackOrder.Random,
-            IncludeVideos = false,
+            MediaFilter = MediaFilter.Images,
             Transition = TransitionMode.Fade,
             FadeDurationSeconds = 0.8,
             PreloadEnabled = false,
@@ -39,7 +39,7 @@ public sealed class AppSettingsTests
         Assert.Equal(expected.ImageDurationSeconds, actual.ImageDurationSeconds);
         Assert.Equal(expected.StartFullscreen, actual.StartFullscreen);
         Assert.Equal(expected.Order, actual.Order);
-        Assert.Equal(expected.IncludeVideos, actual.IncludeVideos);
+        Assert.Equal(expected.MediaFilter, actual.MediaFilter);
         Assert.Equal(expected.Transition, actual.Transition);
         Assert.Equal(expected.FadeDurationSeconds, actual.FadeDurationSeconds);
         Assert.Equal(expected.PreloadEnabled, actual.PreloadEnabled);
@@ -59,4 +59,5 @@ public sealed class AppSettingsTests
         Assert.Equal(5, AppSettings.Load(missing).ImageDurationSeconds);
         Assert.Equal(PlaybackOrder.Filename, AppSettings.Load(invalid).Order);
     }
+
 }

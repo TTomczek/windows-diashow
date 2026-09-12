@@ -33,6 +33,19 @@ public sealed class PlaylistTests
     }
 
     [Fact]
+    public void Videos_only_filter_excludes_images()
+    {
+        var playlist = new Playlist(
+            [Image("a.jpg"), Video("b.mp4"), Image("c.png")],
+            PlaybackOrder.Filename,
+            MediaFilter.Videos);
+
+        Assert.Equal(1, playlist.TotalCount);
+        Assert.Equal("b.mp4", playlist.Next()!.Path);
+        Assert.Equal("b.mp4", playlist.Next()!.Path);
+    }
+
+    [Fact]
     public void Previous_does_not_move_before_first_item()
     {
         var playlist = new Playlist([Image("a.jpg")], PlaybackOrder.Filename, includeVideos: true);
@@ -113,6 +126,24 @@ public sealed class PlaylistTests
 
         Assert.Equal(2, playlist.TotalCount);
         Assert.Equal("c.jpg", playlist.Next()!.Path);
+    }
+
+    [Fact]
+    public void Current_position_counts_only_items_in_active_filter()
+    {
+        var playlist = new Playlist(
+            [Image("a.jpg"), Video("b.mp4"), Image("c.jpg")],
+            PlaybackOrder.Filename,
+            MediaFilter.Both);
+        playlist.Next();
+        playlist.Next();
+
+        playlist.SetOptions(PlaybackOrder.Filename, MediaFilter.Images);
+
+        Assert.Equal(1, playlist.CurrentPosition);
+        Assert.Equal(2, playlist.TotalCount);
+        Assert.Equal("c.jpg", playlist.Next()!.Path);
+        Assert.Equal(2, playlist.CurrentPosition);
     }
 
     [Fact]

@@ -96,7 +96,7 @@ public partial class MainWindow : Window
         _folderMonitor.MediaAdded += FolderMonitor_MediaAdded;
         _folderMonitor.MediaRemoved += FolderMonitor_MediaRemoved;
         _imagePreloader.Clear();
-        _playlist = new Playlist([], _settings.Order, _settings.IncludeVideos);
+        _playlist = new Playlist([], _settings.Order, _settings.MediaFilter);
         ImageView.Source = null;
         StopVideoProgress();
         VideoView.Stop();
@@ -438,14 +438,21 @@ public partial class MainWindow : Window
         SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769", _paused ? "Resume" : "Pause");
     }
 
-    private void ToggleVideos()
+    private void ToggleMediaFilter()
     {
-        _settings.IncludeVideos = !_settings.IncludeVideos;
+        _settings.MediaFilter = _settings.MediaFilter switch
+        {
+            MediaFilter.Images => MediaFilter.Videos,
+            MediaFilter.Videos => MediaFilter.Both,
+            _ => MediaFilter.Images
+        };
         _settings.Save();
         UpdateVideoToggle();
-        _playlist?.SetOptions(_settings.Order, _settings.IncludeVideos);
+        _playlist?.SetOptions(_settings.Order, _settings.MediaFilter);
         UpdateItemCounter();
-        if (!_settings.IncludeVideos && _playlist?.Current?.Kind == MediaKind.Video) GoNext();
+        if (_playlist?.Current is { } current &&
+            !IsIncluded(current.Kind, _settings.MediaFilter))
+            GoNext();
     }
 
     private void SetFullscreen(bool enabled)
@@ -494,13 +501,28 @@ public partial class MainWindow : Window
 
     private void UpdateVideoToggle()
     {
-        VideoToggle.ToolTip = _settings.IncludeVideos ? "Videos enabled - click to disable"
-            : "Videos disabled - click to enable";
+        var (icon, tooltip) = _settings.MediaFilter switch
+        {
+            MediaFilter.Images => ("\uE91B", "Images only - click for videos only"),
+            MediaFilter.Videos => ("\uE714", "Videos only - click for images and videos"),
+            _ => ("\uE91B\uE714", "Images and videos - click for images only")
+        };
+        VideoToggle.Content = icon;
+        VideoToggle.ToolTip = tooltip;
+        VideoToggle.FontSize = _settings.MediaFilter == MediaFilter.Both ? 11 : 17;
         VideoToggle.Opacity = 1;
-        VideoToggle.Background = _settings.IncludeVideos
+        VideoToggle.Background = _settings.MediaFilter == MediaFilter.Both
             ? new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF))
             : new SolidColorBrush(Color.FromArgb(0x66, 0x18, 0x18, 0x20));
     }
+
+    private static bool IsIncluded(MediaKind kind, MediaFilter filter) =>
+        filter switch
+        {
+            MediaFilter.Images => kind == MediaKind.Image,
+            MediaFilter.Videos => kind == MediaKind.Video,
+            _ => true
+        };
 
     private void Window_MouseMove(object sender, MouseEventArgs e)
     {
@@ -523,7 +545,7 @@ public partial class MainWindow : Window
             case Key.Right: GoNext(); break;
             case Key.Left: GoPrevious(); break;
             case Key.F: SetFullscreen(WindowStyle != WindowStyle.None); break;
-            case Key.V: ToggleVideos(); break;
+            case Key.V: ToggleMediaFilter(); break;
             case Key.M: ToggleAudio(); break;
             case Key.E: RevealCurrentInExplorer(); break;
             case Key.Escape:
@@ -644,7 +666,7 @@ public partial class MainWindow : Window
     private void Pause_Click(object sender, RoutedEventArgs e) => TogglePause();
     private void Next_Click(object sender, RoutedEventArgs e) => GoNext();
     private void Previous_Click(object sender, RoutedEventArgs e) => GoPrevious();
-    private void VideoToggle_Click(object sender, RoutedEventArgs e) => ToggleVideos();
+    private void VideoToggle_Click(object sender, RoutedEventArgs e) => ToggleMediaFilter();
     private void Fullscreen_Click(object sender, RoutedEventArgs e) => SetFullscreen(WindowStyle != WindowStyle.None);
 
     private void RevealInExplorer_Click(object sender, RoutedEventArgs e) => RevealCurrentInExplorer();
@@ -708,7 +730,7 @@ public partial class MainWindow : Window
         _settings.Transition = TransitionBox.SelectedIndex == 1 ? TransitionMode.Fade : TransitionMode.Instant;
         _settings.PreloadEnabled = PreloadBox.IsChecked == true;
         _settings.Save();
-        _playlist?.SetOptions(_settings.Order, _settings.IncludeVideos);
+        _playlist?.SetOptions(_settings.Order, _settings.MediaFilter);
     }
 
     private void ChooseFolder_Click(object sender, RoutedEventArgs e)

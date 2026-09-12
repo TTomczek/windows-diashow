@@ -7,6 +7,7 @@ public sealed class MediaDiscoveryTests
     {
         var folder = CreateFolder();
         File.WriteAllText(Path.Combine(folder, "photo.JPG"), "");
+        File.WriteAllText(Path.Combine(folder, "phone.HEIC"), "");
         File.WriteAllText(Path.Combine(folder, "clip.mp4"), "");
         File.WriteAllText(Path.Combine(folder, "notes.txt"), "");
         Directory.CreateDirectory(Path.Combine(folder, "nested"));
@@ -15,9 +16,10 @@ public sealed class MediaDiscoveryTests
         var items = MediaDiscovery.Find(folder);
 
         Assert.Equal(
-            ["clip.mp4", "nested\\scan.png", "notes.txt", "photo.JPG"],
+            ["clip.mp4", "nested\\scan.png", "notes.txt", "phone.HEIC", "photo.JPG"],
             items.Select(item => Path.GetRelativePath(folder, item.Path)));
         Assert.Equal(MediaKind.Image, items.Single(item => item.Path.EndsWith("photo.JPG")).Kind);
+        Assert.Equal(MediaKind.Image, items.Single(item => item.Path.EndsWith("phone.HEIC")).Kind);
         Assert.Equal(MediaKind.Video, items.Single(item => item.Path.EndsWith("notes.txt")).Kind);
     }
 

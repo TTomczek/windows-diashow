@@ -14,12 +14,19 @@ public enum TransitionMode
     Fade
 }
 
+public enum MediaFilter
+{
+    Images,
+    Videos,
+    Both
+}
+
 public sealed class AppSettings
 {
     public double ImageDurationSeconds { get; set; } = 5;
     public bool StartFullscreen { get; set; }
     public PlaybackOrder Order { get; set; } = PlaybackOrder.Filename;
-    public bool IncludeVideos { get; set; } = true;
+    public MediaFilter MediaFilter { get; set; } = MediaFilter.Both;
     public TransitionMode Transition { get; set; } = TransitionMode.Instant;
     public double FadeDurationSeconds { get; set; } = 0.35;
     public bool PreloadEnabled { get; set; } = true;
