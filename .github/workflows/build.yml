@@ -1,0 +1,89 @@
+name: Build and release
+
+on:
+  push:
+    branches:
+      - master
+      - develop
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore diashow.sln
+
+      - name: Run tests
+        run: dotnet test tests/diashow.Tests.csproj --configuration Release --no-restore
+
+      - name: Read project version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content diashow/diashow.csproj
+          $version = $project.Project.PropertyGroup.Version
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw 'The project version is missing.'
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Publish self-contained executable
+        run: >
+          dotnet publish diashow/diashow.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --no-restore
+          --output publish
+
+      - name: Archive develop executable
+        if: github.ref == 'refs/heads/develop'
+        uses: actions/upload-artifact@v4
+        with:
+          name: diashow-${{ steps.version.outputs.version }}-develop
+          path: publish/Diashow.exe
+          if-no-files-found: error
+
+      - name: Ensure master release does not already exist
+        if: github.ref == 'refs/heads/master'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.version }}
+        run: |
+          git fetch --tags --force
+          if (git show-ref --tags --verify --quiet "refs/tags/$env:RELEASE_TAG") {
+            throw "Tag $env:RELEASE_TAG already exists."
+          }
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release $env:RELEASE_TAG already exists."
+          }
+
+      - name: Create master release
+        if: github.ref == 'refs/heads/master'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.version }}
+        run: >
+          gh release create $env:RELEASE_TAG
+          publish/Diashow.exe
+          --title $env:RELEASE_TAG
+          --target $env:GITHUB_SHA
+          --generate-notes
+          --latest

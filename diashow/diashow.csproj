@@ -9,6 +9,7 @@
         <UseWindowsForms>true</UseWindowsForms>
         <AssemblyName>Diashow</AssemblyName>
         <RootNamespace>diashow</RootNamespace>
+        <Version>1.0.0</Version>
     </PropertyGroup>
 
 </Project>
