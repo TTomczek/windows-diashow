@@ -1,7 +1,7 @@
 <Window x:Class="diashow.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Diashow" Width="1100" Height="700" Background="#101014"
+        Title="Diashow" Icon="{StaticResource AppIcon}" Width="1100" Height="700" Background="#101014"
         ToolTipService.IsEnabled="False"
         KeyDown="Window_KeyDown" MouseMove="Window_MouseMove"
         Loaded="Window_Loaded" Closing="Window_Closing">
