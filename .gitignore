@@ -1,5 +1,27 @@
-﻿.idea
-.agents
-diashow/obj
-diashow/bin
+# .NET build output
+**/[Bb]in/
+**/[Oo]bj/
+TestResults/
+
+# Visual Studio, Rider, and user-specific IDE files
+.vs/
+.idea/
+*.user
+*.userosscache
+*.suo
+*.userprefs
+
+# NuGet and tooling caches
+*.nupkg
+*.snupkg
+packages/
+artifacts/
+
+# Coverage and test reports
+coverage/
+*.coverage
+*.coveragexml
+
+# Local skill configuration
+.agents/
 skills-lock.json
