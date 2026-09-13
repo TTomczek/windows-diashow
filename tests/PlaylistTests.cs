@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace diashow.Tests;
 
 public sealed class PlaylistTests
@@ -45,6 +47,59 @@ public sealed class PlaylistTests
 
             Assert.Equal(newer, playlist.Next()!.Path);
             Assert.Equal(older, playlist.Next()!.Path);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(PlaybackOrder.Filename, SortDirection.Ascending)]
+    [InlineData(PlaybackOrder.Filename, SortDirection.Descending)]
+    [InlineData(PlaybackOrder.CreationDate, SortDirection.Ascending)]
+    [InlineData(PlaybackOrder.CreationDate, SortDirection.Descending)]
+    [InlineData(PlaybackOrder.Random, SortDirection.Ascending)]
+    [InlineData(PlaybackOrder.Random, SortDirection.Descending)]
+    public void Every_ordering_variant_returns_each_item_once(
+        PlaybackOrder order,
+        SortDirection direction)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), $"diashow-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var paths = new[]
+            {
+                Path.Combine(folder, "alpha.jpg"),
+                Path.Combine(folder, "bravo.jpg"),
+                Path.Combine(folder, "charlie.jpg")
+            };
+            foreach (var path in paths)
+                File.WriteAllText(path, string.Empty);
+            File.SetCreationTimeUtc(paths[0], new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            File.SetCreationTimeUtc(paths[1], new DateTime(2021, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            File.SetCreationTimeUtc(paths[2], new DateTime(2022, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+            var playlist = new Playlist(
+                paths.Select(Image),
+                order,
+                includeVideos: true,
+                direction);
+            var result = Enumerable.Range(0, paths.Length)
+                .Select(_ => playlist.Next()!.Path)
+                .Select(Path.GetFileName)
+                .ToArray();
+
+            Assert.Equal(paths.Select(Path.GetFileName).ToHashSet(), result.ToHashSet());
+            Assert.DoesNotContain(result, static path => path is null);
+            if (order is PlaybackOrder.Filename or PlaybackOrder.CreationDate)
+            {
+                var expected = paths.Select(Path.GetFileName).ToArray();
+                if (direction == SortDirection.Descending)
+                    Array.Reverse(expected);
+                Assert.Equal(expected, result);
+            }
         }
         finally
         {
@@ -128,6 +183,54 @@ public sealed class PlaylistTests
         Assert.Equal(3, playlist.TotalCount);
         Assert.Equal(["a.jpg", "b.mp4", "c.jpg"],
             Enumerable.Range(0, 3).Select(_ => playlist.Next()!.Path));
+    }
+
+    [Fact]
+    public void AddItems_100000_items_completes_within_startup_budget()
+    {
+        var playlist = new Playlist([], PlaybackOrder.Filename, includeVideos: true);
+        var items = Enumerable.Range(0, 100_000)
+            .Select(index => Image($"{index:D6}.jpg"))
+            .ToArray();
+        var stopwatch = Stopwatch.StartNew();
+
+        foreach (var batch in items.Chunk(500))
+            playlist.AddItems(batch);
+
+        stopwatch.Stop();
+
+        Assert.Equal(items.Length, playlist.TotalCount);
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(30),
+            $"Adding 100,000 items took {stopwatch.Elapsed}.");
+    }
+
+    [Theory]
+    [InlineData(PlaybackOrder.Filename, SortDirection.Ascending)]
+    [InlineData(PlaybackOrder.Filename, SortDirection.Descending)]
+    [InlineData(PlaybackOrder.CreationDate, SortDirection.Ascending)]
+    [InlineData(PlaybackOrder.CreationDate, SortDirection.Descending)]
+    [InlineData(PlaybackOrder.Random, SortDirection.Ascending)]
+    [InlineData(PlaybackOrder.Random, SortDirection.Descending)]
+    public void AddItems_1000_items_checks_startup_time_for_each_ordering_variant(
+        PlaybackOrder order,
+        SortDirection direction)
+    {
+        var playlist = new Playlist([], order, includeVideos: true, direction);
+        var items = Enumerable.Range(0, 1_000)
+            .Select(index => Image($"{index:D6}.jpg"))
+            .ToArray();
+        var stopwatch = Stopwatch.StartNew();
+
+        foreach (var batch in items.Chunk(500))
+            playlist.AddItems(batch);
+
+        stopwatch.Stop();
+
+        Assert.Equal(items.Length, playlist.TotalCount);
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(10),
+            $"{order} {direction} took {stopwatch.Elapsed}.");
     }
 
     [Fact]
