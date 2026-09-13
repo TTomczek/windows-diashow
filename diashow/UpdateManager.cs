@@ -29,8 +29,11 @@ public sealed class UpdateManager : IDisposable
         if (_operation is not null)
             return;
 
-        _stagedUpdate = FindStagedUpdate();
-        _operation = CheckAndDownloadAsync(_shutdown.Token);
+        _operation = Task.Run(async () =>
+        {
+            _stagedUpdate = FindStagedUpdate();
+            await CheckAndDownloadAsync(_shutdown.Token).ConfigureAwait(false);
+        });
     }
 
     public void PrepareForExit()
@@ -261,7 +264,10 @@ public sealed class UpdateManager : IDisposable
 
     private static HttpClient CreateHttpClient()
     {
-        var client = new HttpClient();
+        var client = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(10)
+        };
         client.DefaultRequestHeaders.UserAgent.Add(
             new ProductInfoHeaderValue("Diashow", Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0"));
         client.DefaultRequestHeaders.Accept.Add(

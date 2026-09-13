@@ -2,6 +2,7 @@
 **/[Bb]in/
 **/[Oo]bj/
 TestResults/
+publish
 
 # Visual Studio, Rider, and user-specific IDE files
 .vs/
