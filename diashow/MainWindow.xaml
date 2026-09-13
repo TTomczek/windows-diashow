@@ -5,7 +5,7 @@
         ToolTipService.IsEnabled="False"
         KeyDown="Window_KeyDown" PreviewKeyDown="Window_PreviewKeyDown" MouseMove="Window_MouseMove"
         Loaded="Window_Loaded" Closing="Window_Closing">
-    <Grid x:Name="Root">
+    <Grid x:Name="Root" ClipToBounds="True">
         <Grid.Resources>
             <Style x:Key="IconButton" TargetType="Button">
                 <Setter Property="Width" Value="52"/>
@@ -179,6 +179,8 @@
         </Grid.Resources>
         <Image x:Name="ImageView" Stretch="Uniform" Visibility="Collapsed"
                AutomationProperties.LiveSetting="Polite"/>
+        <Image x:Name="IncomingImageView" Stretch="Uniform" Visibility="Collapsed"
+               AutomationProperties.LiveSetting="Polite"/>
         <MediaElement x:Name="VideoView" Stretch="Uniform" Visibility="Collapsed"
                       LoadedBehavior="Manual" UnloadedBehavior="Manual"
                       AutomationProperties.LiveSetting="Polite"
@@ -286,6 +288,12 @@
                           SelectionChanged="SettingsControl_Changed">
                     <ComboBoxItem x:Name="InstantSwitchItem" Content="Instant switch"/>
                     <ComboBoxItem x:Name="SimpleFadeItem" Content="Simple fade"/>
+                    <ComboBoxItem x:Name="SlideItem" Content="Slide left"/>
+                    <ComboBoxItem x:Name="KenBurnsItem" Content="Ken Burns"/>
+                    <ComboBoxItem x:Name="CrossfadeItem" Content="Crossfade"/>
+                    <ComboBoxItem x:Name="ZoomItem" Content="Zoom"/>
+                    <ComboBoxItem x:Name="CoverItem" Content="Cover"/>
+                    <ComboBoxItem x:Name="BlurDissolveItem" Content="Blur dissolve"/>
                 </ComboBox>
                 <TextBlock x:Name="FadeDurationLabel" Text="Fade duration (seconds)" Foreground="White"/>
                 <TextBox x:Name="FadeBox" Margin="0,4,0,18"

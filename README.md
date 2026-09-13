@@ -11,7 +11,7 @@ A focused, keyboard-friendly slideshow for Windows. Diashow plays images and vid
 - Supports filename order or random playback
 - Filters playback to images, videos, or both
 - Plays animated GIFs and supports common image formats such as JPEG, PNG, BMP, TIFF, WebP, and HEIC
-- Configurable image duration, instant or fade transitions, and image preloading
+- Configurable image duration, instant, fade, slide, Ken Burns, crossfade, zoom, cover, or blur dissolve transitions, and image preloading
 - Fullscreen mode with automatic control hiding
 - Previous/next navigation, video seeking, mute/unmute, and reveal-in-Explorer actions
 - English, German, and Spanish interface translations
@@ -47,7 +47,7 @@ Move the mouse to reveal the playback controls. The settings panel lets you conf
 
 - Image duration from 1 second to 1 hour
 - Filename or random playback order
-- Instant switching or fade transitions
+- Instant switching, fade, slide-left, Ken Burns, crossfade, zoom, cover, or blur dissolve transitions
 - Fade duration
 - Image preloading
 - Interface language

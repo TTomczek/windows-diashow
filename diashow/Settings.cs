@@ -11,7 +11,13 @@ public enum PlaybackOrder
 public enum TransitionMode
 {
     Instant,
-    Fade
+    Fade,
+    Slide,
+    KenBurns,
+    Crossfade,
+    Zoom,
+    Cover,
+    BlurDissolve
 }
 
 public enum MediaFilter

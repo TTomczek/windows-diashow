@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Button = System.Windows.Controls.Button;
@@ -43,6 +44,7 @@ public partial class MainWindow : Window
     private int _gifLoopCount;
     private int _gifCompletedLoops;
     private int _gifFrameIndex;
+    private int _transitionVersion;
 
     public MainWindow(string[] args)
     {
@@ -185,6 +187,7 @@ public partial class MainWindow : Window
 
     private async void ShowItem(MediaItem item)
     {
+        var transitionVersion = ++_transitionVersion;
         _playbackCancellation?.Cancel();
         StopGif();
         _playbackCancellation = new CancellationTokenSource();
@@ -216,9 +219,7 @@ public partial class MainWindow : Window
                     _gifLoopCount = animation.LoopCount;
                     _gifCompletedLoops = 0;
                     _gifFrameIndex = 0;
-                    ImageView.Source = animation.Frames[0];
-                    ImageView.Visibility = Visibility.Visible;
-                    AnimateTransition(ImageView);
+                    ShowImage(animation.Frames[0], transitionVersion);
                     StartGifTimer();
                     return;
                 }
@@ -226,9 +227,7 @@ public partial class MainWindow : Window
                 var image = await _imagePreloader.GetAsync(item.Path, _playbackCancellation.Token);
                 if (_playbackCancellation.IsCancellationRequested)
                     return;
-                ImageView.Source = image;
-                ImageView.Visibility = Visibility.Visible;
-                AnimateTransition(ImageView);
+                ShowImage(image, transitionVersion);
                 _ = WaitThenNext(_playbackCancellation.Token);
                 PreloadUpcoming();
             }
@@ -246,6 +245,7 @@ public partial class MainWindow : Window
         else
         {
             ImageView.Visibility = Visibility.Collapsed;
+            ResetImageTransition();
             VideoView.Visibility = Visibility.Visible;
             StopVideoProgress();
             VideoView.Source = new Uri(item.Path);
@@ -429,6 +429,7 @@ public partial class MainWindow : Window
         StopVideoProgress();
         VideoView.Stop();
         VideoView.Source = null;
+        ResetImageTransition();
         ImageView.Source = null;
         ImageView.Visibility = Visibility.Collapsed;
         VideoView.Visibility = Visibility.Collapsed;
@@ -484,6 +485,152 @@ public partial class MainWindow : Window
             TimeSpan.FromSeconds(Math.Max(0.05, _settings.FadeDurationSeconds))));
     }
 
+    private void ShowImage(ImageSource image, int transitionVersion)
+    {
+        if (!IsLayeredTransition(_settings.Transition) ||
+            ImageView.Visibility != Visibility.Visible ||
+            ImageView.Source is null)
+        {
+            ResetImageTransition();
+            ImageView.Source = image;
+            ImageView.Visibility = Visibility.Visible;
+            if (_settings.Transition == TransitionMode.KenBurns)
+                AnimateKenBurns(ImageView, transitionVersion);
+            else
+                AnimateTransition(ImageView);
+            return;
+        }
+
+        PrepareLayeredTransition();
+        var width = Root.ActualWidth > 0 ? Root.ActualWidth : ActualWidth;
+        var outgoingTransform = new TranslateTransform();
+        var incomingTransform = new TranslateTransform(width, 0);
+        ImageView.RenderTransform = outgoingTransform;
+        IncomingImageView.RenderTransform = incomingTransform;
+        IncomingImageView.Source = image;
+        IncomingImageView.Visibility = Visibility.Visible;
+
+        var duration = TimeSpan.FromSeconds(Math.Max(0.05, _settings.FadeDurationSeconds));
+        EventHandler completed = (_, _) =>
+        {
+            if (transitionVersion != _transitionVersion)
+                return;
+
+            ImageView.Source = IncomingImageView.Source;
+            ImageView.Visibility = Visibility.Visible;
+            ResetImageTransition();
+        };
+        switch (_settings.Transition)
+        {
+            case TransitionMode.Slide:
+            {
+                var incomingAnimation = new DoubleAnimation(width, 0, duration);
+                incomingAnimation.Completed += completed;
+                incomingTransform.BeginAnimation(TranslateTransform.XProperty, incomingAnimation);
+                outgoingTransform.BeginAnimation(TranslateTransform.XProperty,
+                    new DoubleAnimation(0, -width, duration));
+                break;
+            }
+            case TransitionMode.Cover:
+            {
+                var incomingAnimation = new DoubleAnimation(width, 0, duration);
+                incomingAnimation.Completed += completed;
+                incomingTransform.BeginAnimation(TranslateTransform.XProperty, incomingAnimation);
+                break;
+            }
+            case TransitionMode.Crossfade:
+            {
+                ImageView.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0, duration));
+                var incomingAnimation = new DoubleAnimation(0, 1, duration);
+                incomingAnimation.Completed += completed;
+                IncomingImageView.BeginAnimation(OpacityProperty, incomingAnimation);
+                break;
+            }
+            case TransitionMode.Zoom:
+            {
+                ImageView.RenderTransform = new ScaleTransform(1, 1);
+                IncomingImageView.RenderTransform = new ScaleTransform(0.9, 0.9);
+                ImageView.RenderTransform.BeginAnimation(ScaleTransform.ScaleXProperty,
+                    new DoubleAnimation(1, 1.1, duration));
+                ImageView.RenderTransform.BeginAnimation(ScaleTransform.ScaleYProperty,
+                    new DoubleAnimation(1, 1.1, duration));
+                var incomingScaleX = new DoubleAnimation(0.9, 1, duration);
+                incomingScaleX.Completed += completed;
+                IncomingImageView.RenderTransform.BeginAnimation(ScaleTransform.ScaleXProperty, incomingScaleX);
+                IncomingImageView.RenderTransform.BeginAnimation(ScaleTransform.ScaleYProperty,
+                    new DoubleAnimation(0.9, 1, duration));
+                ImageView.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0, duration));
+                IncomingImageView.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration));
+                break;
+            }
+            case TransitionMode.BlurDissolve:
+            {
+                var outgoingBlur = new BlurEffect();
+                var incomingBlur = new BlurEffect { Radius = 12 };
+                ImageView.Effect = outgoingBlur;
+                IncomingImageView.Effect = incomingBlur;
+                outgoingBlur.BeginAnimation(BlurEffect.RadiusProperty, new DoubleAnimation(0, 12, duration));
+                incomingBlur.BeginAnimation(BlurEffect.RadiusProperty,
+                    new DoubleAnimation(12, 0, duration));
+                ImageView.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0, duration));
+                var incomingAnimation = new DoubleAnimation(0, 1, duration);
+                incomingAnimation.Completed += completed;
+                IncomingImageView.BeginAnimation(OpacityProperty, incomingAnimation);
+                break;
+            }
+        }
+    }
+
+    private void ResetImageTransition()
+    {
+        ImageView.BeginAnimation(OpacityProperty, null);
+        IncomingImageView.BeginAnimation(OpacityProperty, null);
+        ImageView.Opacity = 1;
+        IncomingImageView.Opacity = 1;
+        ImageView.Effect = null;
+        IncomingImageView.Effect = null;
+        ImageView.RenderTransform = Transform.Identity;
+        IncomingImageView.RenderTransform = Transform.Identity;
+        IncomingImageView.Source = null;
+        IncomingImageView.Visibility = Visibility.Collapsed;
+    }
+
+    private void PrepareLayeredTransition()
+    {
+        ImageView.BeginAnimation(OpacityProperty, null);
+        IncomingImageView.BeginAnimation(OpacityProperty, null);
+        ImageView.Opacity = 1;
+        IncomingImageView.Opacity = 1;
+        ImageView.Effect = null;
+        IncomingImageView.Effect = null;
+        ImageView.RenderTransform = Transform.Identity;
+        IncomingImageView.RenderTransform = Transform.Identity;
+    }
+
+    private static bool IsLayeredTransition(TransitionMode transition) =>
+        transition is TransitionMode.Slide or TransitionMode.Crossfade or TransitionMode.Zoom
+            or TransitionMode.Cover or TransitionMode.BlurDissolve;
+
+    private void AnimateKenBurns(UIElement element, int transitionVersion)
+    {
+        var scale = new ScaleTransform(1, 1);
+        var translate = new TranslateTransform();
+        var transforms = new TransformGroup();
+        transforms.Children.Add(scale);
+        transforms.Children.Add(translate);
+        element.RenderTransformOrigin = new Point(0.5, 0.5);
+        element.RenderTransform = transforms;
+
+        var duration = TimeSpan.FromSeconds(Math.Max(1, _settings.ImageDurationSeconds));
+        var direction = transitionVersion % 2 == 0 ? 1 : -1;
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, 1.12, duration));
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, 1.12, duration));
+        translate.BeginAnimation(TranslateTransform.XProperty,
+            new DoubleAnimation(-18 * direction, 18 * direction, duration));
+        translate.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(10 * direction, -10 * direction, duration));
+    }
+
     private void ShowMessage(string localizationKey)
     {
         _emptyMessageKey = localizationKey;
@@ -510,6 +657,12 @@ public partial class MainWindow : Window
         TransitionBox.SetValue(AutomationProperties.NameProperty, Localization.Get("Transition"));
         InstantSwitchItem.Content = Localization.Get("InstantSwitch");
         SimpleFadeItem.Content = Localization.Get("SimpleFade");
+        SlideItem.Content = Localization.Get("Slide");
+        KenBurnsItem.Content = Localization.Get("KenBurns");
+        CrossfadeItem.Content = Localization.Get("Crossfade");
+        ZoomItem.Content = Localization.Get("Zoom");
+        CoverItem.Content = Localization.Get("Cover");
+        BlurDissolveItem.Content = Localization.Get("BlurDissolve");
         FadeDurationLabel.Text = Localization.Get("FadeDuration");
         FadeBox.SetValue(AutomationProperties.NameProperty, Localization.Get("FadeDurationAutomation"));
         PreloadBox.Content = Localization.Get("Preload");
@@ -562,7 +715,17 @@ public partial class MainWindow : Window
         DurationBox.Text = _settings.ImageDurationSeconds.ToString("0.##");
         FadeBox.Text = _settings.FadeDurationSeconds.ToString("0.##");
         OrderBox.SelectedIndex = _settings.Order == PlaybackOrder.Random ? 1 : 0;
-        TransitionBox.SelectedIndex = _settings.Transition == TransitionMode.Fade ? 1 : 0;
+        TransitionBox.SelectedIndex = _settings.Transition switch
+        {
+            TransitionMode.Fade => 1,
+            TransitionMode.Slide => 2,
+            TransitionMode.KenBurns => 3,
+            TransitionMode.Crossfade => 4,
+            TransitionMode.Zoom => 5,
+            TransitionMode.Cover => 6,
+            TransitionMode.BlurDissolve => 7,
+            _ => 0
+        };
         PreloadBox.IsChecked = _settings.PreloadEnabled;
         _settingsUiReady = true;
     }
@@ -820,7 +983,17 @@ public partial class MainWindow : Window
         if (double.TryParse(FadeBox.Text, out var fade))
             _settings.FadeDurationSeconds = Math.Clamp(fade, 0.05, 10);
         _settings.Order = OrderBox.SelectedIndex == 1 ? PlaybackOrder.Random : PlaybackOrder.Filename;
-        _settings.Transition = TransitionBox.SelectedIndex == 1 ? TransitionMode.Fade : TransitionMode.Instant;
+        _settings.Transition = TransitionBox.SelectedIndex switch
+        {
+            1 => TransitionMode.Fade,
+            2 => TransitionMode.Slide,
+            3 => TransitionMode.KenBurns,
+            4 => TransitionMode.Crossfade,
+            5 => TransitionMode.Zoom,
+            6 => TransitionMode.Cover,
+            7 => TransitionMode.BlurDissolve,
+            _ => TransitionMode.Instant
+        };
         _settings.PreloadEnabled = PreloadBox.IsChecked == true;
         _settings.Save();
         _playlist?.SetOptions(_settings.Order, _settings.MediaFilter);
