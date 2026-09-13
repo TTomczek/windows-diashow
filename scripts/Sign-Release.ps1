@@ -18,10 +18,20 @@ $keyPath = Join-Path $env:RUNNER_TEMP 'diashow-ed25519-key.pem'
 $signatureBinaryPath = Join-Path $env:RUNNER_TEMP 'diashow-ed25519-signature.bin'
 
 try {
+    $privateKey = $env:DIASHOW_ED25519_PRIVATE_KEY
+    if ($privateKey -notmatch '\r?\n' -and $privateKey.Contains('\n')) {
+        $privateKey = $privateKey.Replace('\n', "`n")
+    }
+
     [IO.File]::WriteAllText(
         $keyPath,
-        $env:DIASHOW_ED25519_PRIVATE_KEY,
+        $privateKey,
         [Text.UTF8Encoding]::new($false))
+
+    & openssl pkey -in $keyPath -noout
+    if ($LASTEXITCODE -ne 0) {
+        throw 'DIASHOW_ED25519_PRIVATE_KEY is not a readable PEM private key.'
+    }
 
     $hash = (Get-FileHash -Algorithm SHA256 $executablePath).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText(
@@ -29,7 +39,7 @@ try {
         "$hash  $name`n",
         [Text.UTF8Encoding]::new($false))
 
-    & openssl pkeyutl -sign -inkey $keyPath -in $checksumPath -out $signatureBinaryPath
+    & openssl pkeyutl -sign -rawin -inkey $keyPath -in $checksumPath -out $signatureBinaryPath
     if ($LASTEXITCODE -ne 0) {
         throw 'OpenSSL failed to create the Ed25519 signature.'
     }
