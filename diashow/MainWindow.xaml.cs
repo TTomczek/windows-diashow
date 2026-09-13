@@ -644,6 +644,7 @@ public partial class MainWindow : Window
         ChooseFolderButton.Content = Localization.Get("ChooseFolder");
         ChooseFolderSettingsButton.Content = Localization.Get("ChooseFolder");
         CloseSettingsButton.Content = Localization.Get("Close");
+        VersionLabel.Text = $"{Localization.Get("Version")}: {typeof(MainWindow).Assembly.GetName().Version?.ToString(3)}";
         SettingsButton.ToolTip = Localization.Get("Settings");
         AutomationProperties.SetName(SettingsButton, Localization.Get("Settings"));
         SettingsTitle.Text = Localization.Get("Settings");
