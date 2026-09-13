@@ -508,6 +508,14 @@ public partial class MainWindow : Window
         WindowState = enabled ? WindowState.Maximized : WindowState.Normal;
         _settings.StartFullscreen = enabled;
         _settings.Save();
+        UpdateFullscreenButton(enabled);
+    }
+
+    private void UpdateFullscreenButton(bool isFullscreen)
+    {
+        SetButtonIcon(FullscreenButton,
+            isFullscreen ? "\uE73F" : "\uE740",
+            Localization.Get(isFullscreen ? "ExitFullscreen" : "Fullscreen"));
     }
 
     private void AnimateTransition(UIElement element)
@@ -722,7 +730,7 @@ public partial class MainWindow : Window
         SetButtonIcon(PreviousButton, "\uE100", Localization.Get("PreviousItem"));
         SetButtonIcon(NextButton, "\uE101", Localization.Get("NextItem"));
         SetButtonIcon(RevealButton, "\uE8B7", Localization.Get("Reveal"));
-        SetButtonIcon(FullscreenButton, "\uE740", Localization.Get("ToggleFullscreen"));
+        UpdateFullscreenButton(WindowStyle == WindowStyle.None);
         SetButtonIcon(AudioButton, _currentVideoAudible ? "\uE74F" : "\uE767",
             Localization.Get(_currentVideoAudible ? "Mute" : "Unmute"));
         SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769",
