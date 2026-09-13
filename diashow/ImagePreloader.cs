@@ -17,6 +17,7 @@ public sealed class ImagePreloader : IDisposable
 
     public async Task<BitmapSource> GetAsync(string path, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var task = _cache.GetOrAdd(path, LoadAsync);
         try
         {

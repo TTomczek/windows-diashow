@@ -16,12 +16,43 @@ public partial class MainWindow : Window
     private const string Repository = "TTomczek/windows-diashow";
     private const string ReleaseApiUrl = $"https://api.github.com/repos/{Repository}/releases/latest";
     private static readonly HttpClient HttpClient = CreateHttpClient();
+    private string? _downloadedExecutable;
 
     public MainWindow()
     {
         InitializeComponent();
         InstallPathTextBox.Text = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Diashow");
+        Loaded += Window_Loaded;
+    }
+
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        Loaded -= Window_Loaded;
+        SetBusy(true);
+        StatusText.Text = "Downloading the latest release...";
+        try
+        {
+            var progress = new Progress<double>(value =>
+            {
+                DownloadProgressBar.IsIndeterminate = false;
+                DownloadProgressBar.Value = value;
+                StatusText.Text = $"Downloading the latest release... {value:P0}";
+            });
+            _downloadedExecutable = await DownloadLatestReleaseAsync(progress);
+            StatusText.Text = "Download complete. Choose your options and install.";
+            InstallButton.IsEnabled = true;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or
+               UnauthorizedAccessException or ArgumentException or NotSupportedException or
+               InvalidOperationException or JsonException or KeyNotFoundException or COMException)
+        {
+            ShowError($"Download failed: {exception.Message}");
+        }
+        finally
+        {
+            SetBusy(false);
+        }
     }
 
     private void Browse_Click(object sender, RoutedEventArgs e)
@@ -47,24 +78,20 @@ public partial class MainWindow : Window
         SetBusy(true);
         try
         {
-            StatusText.Text = "Downloading the latest release...";
-            var executable = await DownloadLatestReleaseAsync();
+            if (_downloadedExecutable is null || !File.Exists(_downloadedExecutable))
+                throw new InvalidOperationException("The application download is not available.");
             var installDirectory = Path.GetFullPath(InstallPathTextBox.Text);
             Directory.CreateDirectory(installDirectory);
             var installedExecutable = Path.Combine(installDirectory, "Diashow.exe");
-            await using (executable)
-            await using (var destination = File.Create(installedExecutable))
-            {
-                await executable.CopyToAsync(destination);
-            }
+            File.Move(_downloadedExecutable, installedExecutable, true);
+            _downloadedExecutable = null;
 
             if (ContextMenuCheckBox.IsChecked == true)
                 InstallContextMenu(installedExecutable);
             if (StartMenuCheckBox.IsChecked == true)
                 InstallStartMenuShortcut(installedExecutable);
 
-            StatusText.Text = "Diashow was installed successfully.";
-            InstallButton.IsEnabled = false;
+            Close();
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or
                UnauthorizedAccessException or ArgumentException or NotSupportedException or
@@ -74,11 +101,13 @@ public partial class MainWindow : Window
         }
         finally
         {
+            if (_downloadedExecutable is not null && File.Exists(_downloadedExecutable))
+                File.Delete(_downloadedExecutable);
             SetBusy(false);
         }
     }
 
-    private static async Task<Stream> DownloadLatestReleaseAsync()
+    private static async Task<string> DownloadLatestReleaseAsync(IProgress<double> progress)
     {
         using var releaseResponse = await HttpClient.GetAsync(ReleaseApiUrl);
         releaseResponse.EnsureSuccessStatusCode();
@@ -93,9 +122,34 @@ public partial class MainWindow : Window
         var downloadUrl = asset.GetProperty("browser_download_url").GetString();
         if (string.IsNullOrWhiteSpace(downloadUrl))
             throw new InvalidOperationException("The latest release has no download URL.");
-        var response = await HttpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+        using var response = await HttpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStreamAsync();
+        var totalBytes = response.Content.Headers.ContentLength;
+        var temporaryFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.Diashow.exe");
+        try
+        {
+            await using var source = await response.Content.ReadAsStreamAsync();
+            await using var destination = new FileStream(
+                temporaryFile, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
+            var buffer = new byte[81920];
+            long downloadedBytes = 0;
+            int bytesRead;
+            while ((bytesRead = await source.ReadAsync(buffer)) > 0)
+            {
+                await destination.WriteAsync(buffer.AsMemory(0, bytesRead));
+                downloadedBytes += bytesRead;
+                if (totalBytes is > 0)
+                    progress.Report((double)downloadedBytes / totalBytes.Value);
+            }
+
+            progress.Report(1);
+            return temporaryFile;
+        }
+        catch
+        {
+            File.Delete(temporaryFile);
+            throw;
+        }
     }
 
     private static void InstallContextMenu(string executable)
@@ -142,10 +196,15 @@ public partial class MainWindow : Window
 
     private void SetBusy(bool isBusy)
     {
-        InstallButton.IsEnabled = !isBusy;
+        InstallButton.IsEnabled = !isBusy && _downloadedExecutable is not null;
         ContextMenuCheckBox.IsEnabled = !isBusy;
         StartMenuCheckBox.IsEnabled = !isBusy;
         InstallPathTextBox.IsEnabled = !isBusy;
+        if (isBusy)
+        {
+            DownloadProgressBar.Value = 0;
+            DownloadProgressBar.IsIndeterminate = true;
+        }
     }
 
     private void ShowError(string message)
