@@ -16,7 +16,7 @@ public sealed class UpdateManager : IDisposable
     private const string Repository = "TTomczek/windows-diashow";
     private const string ReleaseApiUrl = $"https://api.github.com/repos/{Repository}/releases/latest";
     private const string UpdateDirectoryName = "Diashow";
-    private const string SigningPublicKeyBase64 = "OO0K/MgzPFbbritD2cglKoK1wzaEtUySFLXklHZueIg=";
+    private const string SigningPublicKeyBase64 = "MCowBQYDK2VwAyEARxDBf3AQDYk0ZqBz/TpFSRfEc+T6nIK6fz/TTARZua4=";
     private static readonly HttpClient HttpClient = CreateHttpClient();
     private const string OperationLockName = "Diashow.Update.SingleOperation";
     private readonly CancellationTokenSource _shutdown = new();

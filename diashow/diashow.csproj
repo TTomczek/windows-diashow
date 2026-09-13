@@ -10,6 +10,7 @@
         <AssemblyName>Diashow</AssemblyName>
         <RootNamespace>diashow</RootNamespace>
         <Version>1.2.0</Version>
+        <ApplicationIcon>Assets\diashow.ico</ApplicationIcon>
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="BouncyCastle.Cryptography" Version="2.5.1" />
