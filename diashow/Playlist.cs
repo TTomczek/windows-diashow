@@ -170,7 +170,7 @@ public sealed class Playlist
             list.Sort((left, right) =>
             {
                 var comparison = _order == PlaybackOrder.CreationDate
-                    ? DateTime.Compare(File.GetCreationTimeUtc(left.Path), File.GetCreationTimeUtc(right.Path))
+                    ? DateTime.Compare(GetCreationTimeUtc(left), GetCreationTimeUtc(right))
                     : StringComparer.CurrentCultureIgnoreCase.Compare(left.Path, right.Path);
                 if (_direction == SortDirection.Descending)
                     comparison = -comparison;
@@ -181,4 +181,7 @@ public sealed class Playlist
         }
         return list;
     }
+
+    private static DateTime GetCreationTimeUtc(MediaItem item) =>
+        item.CreationTimeUtc ?? File.GetCreationTimeUtc(item.Path);
 }

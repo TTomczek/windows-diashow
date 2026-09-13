@@ -6,4 +6,4 @@ public enum MediaKind
     Video
 }
 
-public sealed record MediaItem(string Path, MediaKind Kind);
+public sealed record MediaItem(string Path, MediaKind Kind, DateTime? CreationTimeUtc = null);

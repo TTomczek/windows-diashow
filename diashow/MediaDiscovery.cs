@@ -45,7 +45,7 @@ public static class MediaDiscovery
                         {
                             token.ThrowIfCancellationRequested();
                             await channel.Writer.WriteAsync(
-                                new MediaItem(path, GetMediaKind(path)), token);
+                                CreateItem(path), token);
                         }
                     });
             }
@@ -73,13 +73,14 @@ public static class MediaDiscovery
             .AsParallel()
             .WithDegreeOfParallelism(Math.Clamp(Environment.ProcessorCount, 2, 8))
             .SelectMany(partition => EnumerateFiles(partition, partition == folder)
-                .Select(path => new MediaItem(path, GetMediaKind(path))))
+                .Select(CreateItem))
             .OrderBy(static item => item.Path, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
         return result;
     }
 
-    public static MediaItem CreateItem(string path) => new(path, GetMediaKind(path));
+    public static MediaItem CreateItem(string path) =>
+        new(path, GetMediaKind(path), File.GetCreationTimeUtc(path));
 
     private static IEnumerable<string> EnumeratePartitions(string folder)
     {

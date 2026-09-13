@@ -54,11 +54,8 @@ public partial class MainWindow : Window
         _requestedPath = args.FirstOrDefault();
         _controlsTimer.Tick += (_, _) =>
         {
-            if (!Controls.IsKeyboardFocusWithin)
-            {
-                Controls.Opacity = 0;
-                Controls.IsEnabled = false;
-            }
+            Controls.Opacity = 0;
+            Controls.IsEnabled = false;
             Cursor = Cursors.None;
         };
         _videoProgressTimer.Tick += (_, _) => UpdateVideoProgress();
