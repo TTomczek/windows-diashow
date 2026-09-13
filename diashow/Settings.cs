@@ -5,7 +5,14 @@ namespace diashow;
 public enum PlaybackOrder
 {
     Filename,
-    Random
+    Random,
+    CreationDate
+}
+
+public enum SortDirection
+{
+    Ascending,
+    Descending
 }
 
 public enum TransitionMode
@@ -33,6 +40,7 @@ public sealed class AppSettings
     public double ImageDurationSeconds { get; set; } = 5;
     public bool StartFullscreen { get; set; }
     public PlaybackOrder Order { get; set; } = PlaybackOrder.Filename;
+    public SortDirection Direction { get; set; } = SortDirection.Ascending;
     public MediaFilter MediaFilter { get; set; } = MediaFilter.Both;
     public TransitionMode Transition { get; set; } = TransitionMode.Instant;
     public double FadeDurationSeconds { get; set; } = 0.35;

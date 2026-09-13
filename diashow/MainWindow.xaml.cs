@@ -106,7 +106,7 @@ public partial class MainWindow : Window
         _folderMonitor.MediaAdded += FolderMonitor_MediaAdded;
         _folderMonitor.MediaRemoved += FolderMonitor_MediaRemoved;
         _imagePreloader.Clear();
-        _playlist = new Playlist([], _settings.Order, _settings.MediaFilter);
+        _playlist = new Playlist([], _settings.Order, _settings.MediaFilter, _settings.Direction);
         ImageView.Source = null;
         StopVideoProgress();
         VideoView.Stop();
@@ -462,7 +462,7 @@ public partial class MainWindow : Window
         };
         _settings.Save();
         UpdateVideoToggle();
-        _playlist?.SetOptions(_settings.Order, _settings.MediaFilter);
+        _playlist?.SetOptions(_settings.Order, _settings.MediaFilter, _settings.Direction);
         UpdateItemCounter();
         if (_playlist?.Current is { } current &&
             !IsIncluded(current.Kind, _settings.MediaFilter))
@@ -652,7 +652,12 @@ public partial class MainWindow : Window
         PlaybackOrderLabel.Text = Localization.Get("PlaybackOrder");
         OrderBox.SetValue(AutomationProperties.NameProperty, Localization.Get("PlaybackOrder"));
         FilenameOrderItem.Content = Localization.Get("FilenameOrder");
+        CreationDateOrderItem.Content = Localization.Get("CreationDateOrder");
         RandomShuffleItem.Content = Localization.Get("RandomShuffle");
+        SortDirectionLabel.Text = Localization.Get("SortDirection");
+        DirectionBox.SetValue(AutomationProperties.NameProperty, Localization.Get("SortDirection"));
+        AscendingItem.Content = Localization.Get("Ascending");
+        DescendingItem.Content = Localization.Get("Descending");
         TransitionLabel.Text = Localization.Get("Transition");
         TransitionBox.SetValue(AutomationProperties.NameProperty, Localization.Get("Transition"));
         InstantSwitchItem.Content = Localization.Get("InstantSwitch");
@@ -714,7 +719,13 @@ public partial class MainWindow : Window
     {
         DurationBox.Text = _settings.ImageDurationSeconds.ToString("0.##");
         FadeBox.Text = _settings.FadeDurationSeconds.ToString("0.##");
-        OrderBox.SelectedIndex = _settings.Order == PlaybackOrder.Random ? 1 : 0;
+        OrderBox.SelectedIndex = _settings.Order switch
+        {
+            PlaybackOrder.CreationDate => 1,
+            PlaybackOrder.Random => 2,
+            _ => 0
+        };
+        DirectionBox.SelectedIndex = _settings.Direction == SortDirection.Descending ? 1 : 0;
         TransitionBox.SelectedIndex = _settings.Transition switch
         {
             TransitionMode.Fade => 1,
@@ -982,7 +993,15 @@ public partial class MainWindow : Window
             _settings.ImageDurationSeconds = Math.Clamp(duration, 1, 3600);
         if (double.TryParse(FadeBox.Text, out var fade))
             _settings.FadeDurationSeconds = Math.Clamp(fade, 0.05, 10);
-        _settings.Order = OrderBox.SelectedIndex == 1 ? PlaybackOrder.Random : PlaybackOrder.Filename;
+        _settings.Order = OrderBox.SelectedIndex switch
+        {
+            1 => PlaybackOrder.CreationDate,
+            2 => PlaybackOrder.Random,
+            _ => PlaybackOrder.Filename
+        };
+        _settings.Direction = DirectionBox.SelectedIndex == 1
+            ? SortDirection.Descending
+            : SortDirection.Ascending;
         _settings.Transition = TransitionBox.SelectedIndex switch
         {
             1 => TransitionMode.Fade,
@@ -996,7 +1015,7 @@ public partial class MainWindow : Window
         };
         _settings.PreloadEnabled = PreloadBox.IsChecked == true;
         _settings.Save();
-        _playlist?.SetOptions(_settings.Order, _settings.MediaFilter);
+        _playlist?.SetOptions(_settings.Order, _settings.MediaFilter, _settings.Direction);
     }
 
     private void ChooseFolder_Click(object sender, RoutedEventArgs e)

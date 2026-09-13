@@ -8,6 +8,7 @@ public sealed class Playlist
     private readonly List<MediaItem> _history = [];
     private int _historyIndex = -1;
     private PlaybackOrder _order;
+    private SortDirection _direction;
     private MediaFilter _mediaFilter;
 
     public MediaItem? Current => _historyIndex >= 0 && _historyIndex < _history.Count ? _history[_historyIndex] : null;
@@ -19,18 +20,25 @@ public sealed class Playlist
     public IEnumerable<MediaItem> PreloadCandidates(int count) =>
         new[] { Current }.Concat(_unseen).Where(x => x is not null).Take(Math.Max(0, count) + 1)!;
 
-    public Playlist(IEnumerable<MediaItem> items, PlaybackOrder order, MediaFilter mediaFilter)
+    public Playlist(
+        IEnumerable<MediaItem> items,
+        PlaybackOrder order,
+        MediaFilter mediaFilter,
+        SortDirection direction = SortDirection.Ascending)
     {
         _all = items.ToList();
         _order = order;
+        _direction = direction;
         _mediaFilter = mediaFilter;
-        if (_order == PlaybackOrder.Filename)
-            _all.Sort(static (left, right) => StringComparer.CurrentCultureIgnoreCase.Compare(left.Path, right.Path));
         RebuildUnseen();
     }
 
-    public Playlist(IEnumerable<MediaItem> items, PlaybackOrder order, bool includeVideos)
-        : this(items, order, includeVideos ? MediaFilter.Both : MediaFilter.Images)
+    public Playlist(
+        IEnumerable<MediaItem> items,
+        PlaybackOrder order,
+        bool includeVideos,
+        SortDirection direction = SortDirection.Ascending)
+        : this(items, order, includeVideos ? MediaFilter.Both : MediaFilter.Images, direction)
     {
     }
 
@@ -39,8 +47,6 @@ public sealed class Playlist
         var existing = _all.Select(static item => item.Path)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         _all.AddRange(items.Where(item => existing.Add(item.Path)));
-        if (_order == PlaybackOrder.Filename)
-            _all.Sort(static (left, right) => StringComparer.CurrentCultureIgnoreCase.Compare(left.Path, right.Path));
         RebuildUnseen();
     }
 
@@ -61,15 +67,22 @@ public sealed class Playlist
         return currentPath is not null && removed.Contains(currentPath);
     }
 
-    public void SetOptions(PlaybackOrder order, MediaFilter mediaFilter)
+    public void SetOptions(
+        PlaybackOrder order,
+        MediaFilter mediaFilter,
+        SortDirection direction = SortDirection.Ascending)
     {
         _order = order;
+        _direction = direction;
         _mediaFilter = mediaFilter;
         RebuildUnseen();
     }
 
-    public void SetOptions(PlaybackOrder order, bool includeVideos) =>
-        SetOptions(order, includeVideos ? MediaFilter.Both : MediaFilter.Images);
+    public void SetOptions(
+        PlaybackOrder order,
+        bool includeVideos,
+        SortDirection direction = SortDirection.Ascending) =>
+        SetOptions(order, includeVideos ? MediaFilter.Both : MediaFilter.Images, direction);
 
     public MediaItem? StartAt(string? path)
     {
@@ -152,6 +165,20 @@ public sealed class Playlist
                 var j = _random.Next(i + 1);
                 (list[i], list[j]) = (list[j], list[i]);
             }
+        else
+        {
+            list.Sort((left, right) =>
+            {
+                var comparison = _order == PlaybackOrder.CreationDate
+                    ? DateTime.Compare(File.GetCreationTimeUtc(left.Path), File.GetCreationTimeUtc(right.Path))
+                    : StringComparer.CurrentCultureIgnoreCase.Compare(left.Path, right.Path);
+                if (_direction == SortDirection.Descending)
+                    comparison = -comparison;
+                return comparison != 0
+                    ? comparison
+                    : StringComparer.CurrentCultureIgnoreCase.Compare(left.Path, right.Path);
+            });
+        }
         return list;
     }
 }

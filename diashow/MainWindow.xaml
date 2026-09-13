@@ -280,7 +280,15 @@
                           AutomationProperties.Name="Playback order"
                           SelectionChanged="SettingsControl_Changed">
                     <ComboBoxItem x:Name="FilenameOrderItem" Content="Filename order"/>
-                    <ComboBoxItem x:Name="RandomShuffleItem" Content="Random shuffle"/>
+                <ComboBoxItem x:Name="CreationDateOrderItem" Content="Creation date"/>
+                <ComboBoxItem x:Name="RandomShuffleItem" Content="Random shuffle"/>
+                </ComboBox>
+                <TextBlock x:Name="SortDirectionLabel" Text="Sort direction" Foreground="White"/>
+                <ComboBox x:Name="DirectionBox" Margin="0,4,0,12"
+                      AutomationProperties.Name="Sort direction"
+                      SelectionChanged="SettingsControl_Changed">
+                <ComboBoxItem x:Name="AscendingItem" Content="Ascending"/>
+                <ComboBoxItem x:Name="DescendingItem" Content="Descending"/>
                 </ComboBox>
                 <TextBlock x:Name="TransitionLabel" Text="Transition" Foreground="White"/>
                 <ComboBox x:Name="TransitionBox" Margin="0,4,0,12"

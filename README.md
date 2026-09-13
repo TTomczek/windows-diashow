@@ -8,7 +8,7 @@ A focused, keyboard-friendly slideshow for Windows. Diashow plays images and vid
 
 - Displays images and videos in a single, distraction-free viewer
 - Discovers media recursively and updates the playlist when files are added, removed, or renamed
-- Supports filename order or random playback
+- Supports filename, creation-date, or random playback order with ascending or descending sorting
 - Filters playback to images, videos, or both
 - Plays animated GIFs and supports common image formats such as JPEG, PNG, BMP, TIFF, WebP, and HEIC
 - Configurable image duration, instant, fade, slide, Ken Burns, crossfade, zoom, cover, or blur dissolve transitions, and image preloading
@@ -46,7 +46,8 @@ If no path is supplied, Diashow reopens the last folder used. If no folder has b
 Move the mouse to reveal the playback controls. The settings panel lets you configure:
 
 - Image duration from 1 second to 1 hour
-- Filename or random playback order
+- Filename, creation-date, or random playback order
+- Ascending or descending sort direction
 - Instant switching, fade, slide-left, Ken Burns, crossfade, zoom, cover, or blur dissolve transitions
 - Fade duration
 - Image preloading

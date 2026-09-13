@@ -19,6 +19,40 @@ public sealed class PlaylistTests
     }
 
     [Fact]
+    public void Creation_date_order_supports_both_directions()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), $"diashow-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var older = Path.Combine(folder, "older.jpg");
+            var newer = Path.Combine(folder, "newer.jpg");
+            File.WriteAllText(older, string.Empty);
+            File.WriteAllText(newer, string.Empty);
+            File.SetCreationTimeUtc(older, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            File.SetCreationTimeUtc(newer, new DateTime(2021, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+            var playlist = new Playlist(
+                [Image(newer), Image(older)],
+                PlaybackOrder.CreationDate,
+                includeVideos: true,
+                SortDirection.Ascending);
+
+            Assert.Equal(older, playlist.Next()!.Path);
+            Assert.Equal(newer, playlist.Next()!.Path);
+
+            playlist.SetOptions(PlaybackOrder.CreationDate, MediaFilter.Both, SortDirection.Descending);
+
+            Assert.Equal(newer, playlist.Next()!.Path);
+            Assert.Equal(older, playlist.Next()!.Path);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Excluding_videos_affects_count_and_navigation()
     {
         var playlist = new Playlist(
