@@ -105,7 +105,8 @@ public partial class MainWindow : Window
         _folderMonitor.MediaAdded += FolderMonitor_MediaAdded;
         _folderMonitor.MediaRemoved += FolderMonitor_MediaRemoved;
         _imagePreloader.Clear();
-        _playlist = new Playlist([], _settings.Order, _settings.MediaFilter, _settings.Direction);
+        var playlist = new Playlist([], _settings.Order, _settings.MediaFilter, _settings.Direction);
+        _playlist = playlist;
         ImageView.Source = null;
         StopVideoProgress();
         VideoView.Stop();
@@ -114,7 +115,7 @@ public partial class MainWindow : Window
         var pending = new List<MediaItem>();
         var started = false;
 
-        await foreach (var item in reader.ReadAllAsync())
+        await foreach (var item in reader.ReadAllAsync().ConfigureAwait(false))
         {
             if (scanCancellation.IsCancellationRequested)
                 return;
@@ -123,22 +124,39 @@ public partial class MainWindow : Window
                 string.Equals(item.Path, startFile, StringComparison.OrdinalIgnoreCase);
             if (!started && (startFile is null || isRequestedItem))
             {
-                _playlist.AddItems(pending);
+                var initialItems = pending.ToArray();
                 pending.Clear();
-                UpdateItemCounter();
-                var first = startFile is null ? _playlist.StartAt(item.Path) : _playlist.StartAt(startFile);
+                var first = await Dispatcher.InvokeAsync(() =>
+                {
+                    if (_playlist != playlist || scanCancellation.IsCancellationRequested)
+                        return null;
+
+                    playlist.AddItems(initialItems);
+                    UpdateItemCounter();
+                    return startFile is null ? playlist.StartAt(item.Path) : playlist.StartAt(startFile);
+                });
                 if (first is not null)
                 {
                     started = true;
-                    EmptyState.Visibility = Visibility.Collapsed;
-                    ShowItem(first);
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        EmptyState.Visibility = Visibility.Collapsed;
+                        ShowItem(first);
+                    });
                 }
             }
             else if (started && pending.Count >= DiscoveryBatchSize)
             {
-                _playlist.AddItems(pending);
+                var batch = pending.ToArray();
                 pending.Clear();
-                UpdateItemCounter();
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (_playlist != playlist || scanCancellation.IsCancellationRequested)
+                        return;
+
+                    playlist.AddItems(batch);
+                    UpdateItemCounter();
+                });
             }
         }
 
@@ -146,19 +164,35 @@ public partial class MainWindow : Window
             return;
         if (pending.Count > 0)
         {
-            _playlist.AddItems(pending);
-            UpdateItemCounter();
+            var batch = pending.ToArray();
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (_playlist != playlist || scanCancellation.IsCancellationRequested)
+                    return;
+
+                playlist.AddItems(batch);
+                UpdateItemCounter();
+            });
         }
         if (!started)
         {
-            var first = startFile is null ? _playlist.StartRandom() : _playlist.StartAt(startFile);
+            var first = await Dispatcher.InvokeAsync(() =>
+            {
+                if (_playlist != playlist || scanCancellation.IsCancellationRequested)
+                    return null;
+
+                return startFile is null ? playlist.StartRandom() : playlist.StartAt(startFile);
+            });
             if (first is not null)
             {
-                EmptyState.Visibility = Visibility.Collapsed;
-                ShowItem(first);
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    EmptyState.Visibility = Visibility.Collapsed;
+                    ShowItem(first);
+                });
             }
             else
-                ShowMessage("NoMediaMessage");
+                await Dispatcher.InvokeAsync(() => ShowMessage("NoMediaMessage"));
         }
     }
 

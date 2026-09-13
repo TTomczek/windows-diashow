@@ -46,6 +46,36 @@ public sealed class MediaDiscoveryTests
     }
 
     [Fact]
+    public async Task Stream_yields_items_before_discovery_completes()
+    {
+        var folder = CreateFolder();
+        for (var index = 0; index < 100; index++)
+            File.WriteAllText(Path.Combine(folder, $"{index:D3}.jpg"), "");
+
+        var reader = MediaDiscovery.Stream(folder);
+
+        Assert.True(await reader.WaitToReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.True(reader.TryRead(out var first));
+        Assert.NotNull(first);
+        await reader.ReadAllAsync().ToListAsync();
+        await reader.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public void CreateItem_caches_creation_time()
+    {
+        var folder = CreateFolder();
+        var path = Path.Combine(folder, "photo.jpg");
+        File.WriteAllText(path, "");
+        var expected = new DateTime(2022, 6, 15, 12, 30, 0, DateTimeKind.Utc);
+        File.SetCreationTimeUtc(path, expected);
+
+        var item = MediaDiscovery.CreateItem(path);
+
+        Assert.Equal(expected, item.CreationTimeUtc);
+    }
+
+    [Fact]
     public async Task Stream_stops_when_cancelled_before_discovery()
     {
         using var cancellation = new CancellationTokenSource();
