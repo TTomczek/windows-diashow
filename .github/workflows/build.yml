@@ -63,6 +63,24 @@ jobs:
           --no-restore
           --output publish/installer
 
+      - name: Publish self-contained updater
+        run: >
+          dotnet publish updater/Diashow.Updater.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          --no-restore
+          --output publish/updater
+
+      - name: Create signed release artifacts
+        if: github.ref == 'refs/heads/master'
+        shell: pwsh
+        env:
+          DIASHOW_ED25519_PRIVATE_KEY: ${{ secrets.DIASHOW_ED25519_PRIVATE_KEY }}
+        run: .\scripts\Sign-Release.ps1 -Executable publish/app/Diashow.exe
+
       - name: Archive develop executables
         if: github.ref == 'refs/heads/develop'
         uses: actions/upload-artifact@v4
@@ -71,6 +89,7 @@ jobs:
           path: |
             publish/app/Diashow.exe
             publish/installer/Diashow.Installer.exe
+            publish/updater/Diashow.Updater.exe
           if-no-files-found: error
 
       - name: Ensure master release does not already exist
@@ -107,6 +126,9 @@ jobs:
           gh release create $env:RELEASE_TAG
           publish/app/Diashow.exe
           publish/installer/Diashow.Installer.exe
+          publish/updater/Diashow.Updater.exe
+          publish/app/Diashow.exe.sha256
+          publish/app/Diashow.exe.sig
           --title $env:RELEASE_TAG
           --target $env:GITHUB_SHA
           --generate-notes

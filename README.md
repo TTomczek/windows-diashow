@@ -28,7 +28,7 @@ A focused, keyboard-friendly slideshow for Windows. Diashow plays images and vid
 4. Optionally enable the File Explorer context-menu and Start-menu shortcuts.
 5. Select **Install**.
 
-The installer downloads the matching latest `Diashow.exe` release asset before installing it. The published application is self-contained, so a separate .NET runtime installation is not required.
+The installer downloads the matching latest `Diashow.exe` and `Diashow.Updater.exe` release assets before installing them. The published application is self-contained, so a separate .NET runtime installation is not required.
 
 ### Portable application
 
@@ -135,9 +135,18 @@ dotnet publish installer\Diashow.Installer.csproj `
   -p:IncludeNativeLibrariesForSelfExtract=true `
   --no-restore `
   --output publish\installer
+
+dotnet publish updater\Diashow.Updater.csproj `
+  --configuration Release `
+  --runtime win-x64 `
+  --self-contained true `
+  -p:PublishSingleFile=true `
+  -p:IncludeNativeLibrariesForSelfExtract=true `
+  --no-restore `
+  --output publish\updater
 ```
 
-The resulting files are `publish\app\Diashow.exe` and `publish\installer\Diashow.Installer.exe`.
+The resulting files are `publish\app\Diashow.exe`, `publish\installer\Diashow.Installer.exe`, and `publish\updater\Diashow.Updater.exe`.
 
 ## Project structure
 
@@ -145,6 +154,7 @@ The resulting files are `publish\app\Diashow.exe` and `publish\installer\Diashow
 | --- | --- |
 | `diashow\` | Main WPF application |
 | `installer\` | Release installer that downloads and installs the latest app |
+| `updater\` | Replacement helper used after the app exits |
 | `tests\` | xUnit tests |
 | `.github\workflows\build.yml` | CI, test, publish, and release automation |
 | `diashow.sln` | Solution containing the app, installer, and tests |
@@ -154,6 +164,12 @@ The application is intentionally dependency-light: the viewer is implemented wit
 ## Releases and CI
 
 Pushes to `develop` build and upload development executables as GitHub Actions artifacts. Pushes to `master` run the same tests and publish steps, then create a GitHub release using the `<Version>` value from `diashow\diashow.csproj`.
+
+### Automatic updates
+
+At startup, an installed copy checks the GitHub latest stable release without blocking the UI. A newer semantic version is downloaded in the background with `Diashow.exe`, `Diashow.exe.sha256`, and `Diashow.exe.sig`. The checksum uses `<lowercase SHA-256>␠␠Diashow.exe`; the detached Ed25519 signature is base64 encoded and covers the checksum file bytes. Both checks must pass before staging under `%LOCALAPPDATA%\Diashow\updates`.
+
+On close, `Diashow.Updater.exe` waits for the app to exit and atomically replaces the installed executable with rollback on errors. It never relaunches the app. Master releases require the `DIASHOW_ED25519_PRIVATE_KEY` GitHub secret in PEM format; the corresponding public key is committed in `diashow\UpdateManager.cs`.
 
 ## License
 

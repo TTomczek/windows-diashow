@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private const string ReleaseApiUrl = $"https://api.github.com/repos/{Repository}/releases/latest";
     private static readonly HttpClient HttpClient = CreateHttpClient();
     private string? _downloadedExecutable;
+    private string? _downloadedUpdater;
 
     public MainWindow()
     {
@@ -39,7 +40,7 @@ public partial class MainWindow : Window
                 DownloadProgressBar.Value = value;
                 StatusText.Text = $"Downloading the latest release... {value:P0}";
             });
-            _downloadedExecutable = await DownloadLatestReleaseAsync(progress);
+            (_downloadedExecutable, _downloadedUpdater) = await DownloadLatestReleaseAsync(progress);
             StatusText.Text = "Download complete. Choose your options and install.";
             InstallButton.IsEnabled = true;
         }
@@ -78,13 +79,17 @@ public partial class MainWindow : Window
         SetBusy(true);
         try
         {
-            if (_downloadedExecutable is null || !File.Exists(_downloadedExecutable))
-                throw new InvalidOperationException("The application download is not available.");
+            if (_downloadedExecutable is null || !File.Exists(_downloadedExecutable) ||
+                _downloadedUpdater is null || !File.Exists(_downloadedUpdater))
+                throw new InvalidOperationException("The application or updater download is not available.");
             var installDirectory = Path.GetFullPath(InstallPathTextBox.Text);
             Directory.CreateDirectory(installDirectory);
             var installedExecutable = Path.Combine(installDirectory, "Diashow.exe");
+            var installedUpdater = Path.Combine(installDirectory, "Diashow.Updater.exe");
             File.Move(_downloadedExecutable, installedExecutable, true);
+            File.Move(_downloadedUpdater, installedUpdater, true);
             _downloadedExecutable = null;
+            _downloadedUpdater = null;
 
             if (ContextMenuCheckBox.IsChecked == true)
                 InstallContextMenu(installedExecutable);
@@ -103,11 +108,14 @@ public partial class MainWindow : Window
         {
             if (_downloadedExecutable is not null && File.Exists(_downloadedExecutable))
                 File.Delete(_downloadedExecutable);
+            if (_downloadedUpdater is not null && File.Exists(_downloadedUpdater))
+                File.Delete(_downloadedUpdater);
             SetBusy(false);
         }
     }
 
-    private static async Task<string> DownloadLatestReleaseAsync(IProgress<double> progress)
+    private static async Task<(string Executable, string Updater)> DownloadLatestReleaseAsync(
+        IProgress<double> progress)
     {
         using var releaseResponse = await HttpClient.GetAsync(ReleaseApiUrl);
         releaseResponse.EnsureSuccessStatusCode();
@@ -118,38 +126,57 @@ public partial class MainWindow : Window
                 item.GetProperty("name").GetString(), "Diashow.exe", StringComparison.OrdinalIgnoreCase));
         if (asset.ValueKind == JsonValueKind.Undefined)
             throw new InvalidOperationException("The latest GitHub release does not contain Diashow.exe.");
+        var updaterAsset = release.RootElement.GetProperty("assets").EnumerateArray()
+            .FirstOrDefault(item => string.Equals(
+                item.GetProperty("name").GetString(), "Diashow.Updater.exe",
+                StringComparison.OrdinalIgnoreCase));
+        if (updaterAsset.ValueKind == JsonValueKind.Undefined)
+            throw new InvalidOperationException(
+                "The latest GitHub release does not contain Diashow.Updater.exe.");
 
         var downloadUrl = asset.GetProperty("browser_download_url").GetString();
         if (string.IsNullOrWhiteSpace(downloadUrl))
             throw new InvalidOperationException("The latest release has no download URL.");
-        using var response = await HttpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
-        var totalBytes = response.Content.Headers.ContentLength;
-        var temporaryFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.Diashow.exe");
+        var updaterDownloadUrl = updaterAsset.GetProperty("browser_download_url").GetString();
+        if (string.IsNullOrWhiteSpace(updaterDownloadUrl))
+            throw new InvalidOperationException("The latest release has no updater download URL.");
+        var temporaryExecutable = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.Diashow.exe");
+        var temporaryUpdater = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.Diashow.Updater.exe");
         try
         {
-            await using var source = await response.Content.ReadAsStreamAsync();
-            await using var destination = new FileStream(
-                temporaryFile, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
-            var buffer = new byte[81920];
-            long downloadedBytes = 0;
-            int bytesRead;
-            while ((bytesRead = await source.ReadAsync(buffer)) > 0)
-            {
-                await destination.WriteAsync(buffer.AsMemory(0, bytesRead));
-                downloadedBytes += bytesRead;
-                if (totalBytes is > 0)
-                    progress.Report((double)downloadedBytes / totalBytes.Value);
-            }
-
-            progress.Report(1);
-            return temporaryFile;
+            await DownloadAssetAsync(downloadUrl, temporaryExecutable, progress);
+            await DownloadAssetAsync(updaterDownloadUrl, temporaryUpdater, null);
+            return (temporaryExecutable, temporaryUpdater);
         }
         catch
         {
-            File.Delete(temporaryFile);
+            File.Delete(temporaryExecutable);
+            File.Delete(temporaryUpdater);
             throw;
         }
+    }
+
+    private static async Task DownloadAssetAsync(
+        string downloadUrl, string temporaryFile, IProgress<double>? progress)
+    {
+        using var response = await HttpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+        var totalBytes = response.Content.Headers.ContentLength;
+        await using var source = await response.Content.ReadAsStreamAsync();
+        await using var destination = new FileStream(
+            temporaryFile, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
+        var buffer = new byte[81920];
+        long downloadedBytes = 0;
+        int bytesRead;
+        while ((bytesRead = await source.ReadAsync(buffer)) > 0)
+        {
+            await destination.WriteAsync(buffer.AsMemory(0, bytesRead));
+            downloadedBytes += bytesRead;
+            if (totalBytes is > 0)
+                progress?.Report((double)downloadedBytes / totalBytes.Value);
+        }
+
+        progress?.Report(1);
     }
 
     private static void InstallContextMenu(string executable)
@@ -196,7 +223,8 @@ public partial class MainWindow : Window
 
     private void SetBusy(bool isBusy)
     {
-        InstallButton.IsEnabled = !isBusy && _downloadedExecutable is not null;
+        InstallButton.IsEnabled = !isBusy && _downloadedExecutable is not null &&
+            _downloadedUpdater is not null;
         ContextMenuCheckBox.IsEnabled = !isBusy;
         StartMenuCheckBox.IsEnabled = !isBusy;
         InstallPathTextBox.IsEnabled = !isBusy;

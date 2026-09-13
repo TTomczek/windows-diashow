@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private readonly ImagePreloader _imagePreloader = new();
     private readonly DispatcherTimer _controlsTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _videoProgressTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly UpdateManager? _updateManager;
     private Playlist? _playlist;
     private CancellationTokenSource? _playbackCancellation;
     private CancellationTokenSource? _scanCancellation;
@@ -46,9 +47,10 @@ public partial class MainWindow : Window
     private int _gifFrameIndex;
     private int _transitionVersion;
 
-    public MainWindow(string[] args)
+    public MainWindow(string[] args, UpdateManager? updateManager = null)
     {
         InitializeComponent();
+        _updateManager = updateManager;
         _requestedPath = args.FirstOrDefault();
         _controlsTimer.Tick += (_, _) =>
         {
@@ -1035,6 +1037,7 @@ public partial class MainWindow : Window
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        _updateManager?.PrepareForExit();
         _playbackCancellation?.Cancel();
         _scanCancellation?.Cancel();
         _folderMonitor?.Dispose();

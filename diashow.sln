@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "diashow.Tests", "tests\dias
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diashow.Installer", "installer\Diashow.Installer.csproj", "{4F5E9C7A-2C83-4B9D-AB6C-8B2D0E59C8D4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diashow.Updater", "updater\Diashow.Updater.csproj", "{D1B7E3B5-7F2D-47C3-9E4A-BC9B1E6C4F20}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +26,9 @@ Global
 		{4F5E9C7A-2C83-4B9D-AB6C-8B2D0E59C8D4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4F5E9C7A-2C83-4B9D-AB6C-8B2D0E59C8D4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4F5E9C7A-2C83-4B9D-AB6C-8B2D0E59C8D4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D1B7E3B5-7F2D-47C3-9E4A-BC9B1E6C4F20}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D1B7E3B5-7F2D-47C3-9E4A-BC9B1E6C4F20}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D1B7E3B5-7F2D-47C3-9E4A-BC9B1E6C4F20}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D1B7E3B5-7F2D-47C3-9E4A-BC9B1E6C4F20}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
