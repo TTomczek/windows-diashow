@@ -30,6 +30,9 @@ jobs:
       - name: Run tests
         run: dotnet test tests/diashow.Tests.csproj --configuration Release --no-restore
 
+      - name: Run UI tests
+        run: dotnet test ui-tests/diashow.UiTests.csproj --configuration Release --no-restore
+
       - name: Read project version
         id: version
         shell: pwsh
