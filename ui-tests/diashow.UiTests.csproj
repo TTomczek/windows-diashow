@@ -17,4 +17,12 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
+
+  <Target Name="CopyDiashowExecutable" AfterTargets="Build"
+          Condition="Exists('$(MSBuildProjectDirectory)\..\diashow\bin\$(Configuration)\net10.0-windows\Diashow.exe')">
+    <Copy
+      SourceFiles="$(MSBuildProjectDirectory)\..\diashow\bin\$(Configuration)\net10.0-windows\Diashow.exe"
+      DestinationFolder="$(OutDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
 </Project>
