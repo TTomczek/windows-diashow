@@ -18,10 +18,13 @@
     </PackageReference>
   </ItemGroup>
 
-  <Target Name="CopyDiashowExecutable" AfterTargets="Build"
+  <Target Name="CopyDiashowOutput" AfterTargets="Build"
           Condition="Exists('$(MSBuildProjectDirectory)\..\diashow\bin\$(Configuration)\net10.0-windows\Diashow.exe')">
+    <ItemGroup>
+      <_DiashowOutput Include="$(MSBuildProjectDirectory)\..\diashow\bin\$(Configuration)\net10.0-windows\*.*" />
+    </ItemGroup>
     <Copy
-      SourceFiles="$(MSBuildProjectDirectory)\..\diashow\bin\$(Configuration)\net10.0-windows\Diashow.exe"
+      SourceFiles="@(_DiashowOutput)"
       DestinationFolder="$(OutDir)"
       SkipUnchangedFiles="true" />
   </Target>
