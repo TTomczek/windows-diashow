@@ -14,7 +14,6 @@ public sealed class AppSettingsTests
         Assert.Equal(TransitionMode.Instant, settings.Transition);
         Assert.True(settings.PreloadEnabled);
         Assert.Equal(4, settings.PreloadCount);
-        Assert.True(settings.QueuePreviewVisible);
         Assert.Null(settings.LastFolder);
     }
 
@@ -33,7 +32,6 @@ public sealed class AppSettingsTests
             FadeDurationSeconds = 0.8,
             PreloadEnabled = false,
             PreloadCount = 9,
-            QueuePreviewVisible = false,
             LastFolder = "C:\\Pictures"
         };
 
@@ -49,7 +47,6 @@ public sealed class AppSettingsTests
         Assert.Equal(expected.FadeDurationSeconds, actual.FadeDurationSeconds);
         Assert.Equal(expected.PreloadEnabled, actual.PreloadEnabled);
         Assert.Equal(expected.PreloadCount, actual.PreloadCount);
-        Assert.Equal(expected.QueuePreviewVisible, actual.QueuePreviewVisible);
         Assert.Equal(expected.LastFolder, actual.LastFolder);
     }
 
@@ -64,7 +61,6 @@ public sealed class AppSettingsTests
 
         Assert.Equal(5, AppSettings.Load(missing).ImageDurationSeconds);
         Assert.Equal(PlaybackOrder.Filename, AppSettings.Load(invalid).Order);
-        Assert.True(AppSettings.Load(missing).QueuePreviewVisible);
     }
 
 }
