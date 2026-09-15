@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <IsTestProject>true</IsTestProject>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\diashow\diashow.csproj" />
+    <PackageReference Include="FlaUI.Core" Version="5.0.0" />
+    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <Target Name="CopyDiashowOutput" AfterTargets="Build"
+          Condition="Exists('$(MSBuildProjectDirectory)\..\diashow\bin\$(Configuration)\net10.0-windows\Diashow.exe')">
+    <ItemGroup>
+      <_DiashowOutput Include="$(MSBuildProjectDirectory)\..\diashow\bin\$(Configuration)\net10.0-windows\*.*" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(_DiashowOutput)"
+      DestinationFolder="$(OutDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
+</Project>

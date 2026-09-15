@@ -114,6 +114,14 @@ dotnet test tests\diashow.Tests.csproj --configuration Release --no-restore
 
 The tests cover playlist ordering and navigation, media discovery, settings persistence, image decoding, and Explorer integration.
 
+UI tests use FlaUI to launch the application and interact with its Windows UI Automation tree:
+
+```powershell
+dotnet test ui-tests\diashow.UiTests.csproj --configuration Release --no-restore
+```
+
+UI tests require Windows because they launch the WPF application.
+
 ### Publish locally
 
 The release workflow publishes self-contained, single-file Windows executables for `win-x64`. To reproduce that output locally:
