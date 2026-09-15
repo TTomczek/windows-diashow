@@ -5,7 +5,12 @@ on:
     branches:
       - master
       - develop
+      - 'feature/**'
   pull_request:
+    branches:
+      - master
+      - develop
+      - 'feature/**'
 
 permissions:
   contents: read
@@ -30,10 +35,34 @@ jobs:
         run: dotnet restore diashow.sln --runtime win-x64
 
       - name: Run tests
-        run: dotnet test tests/diashow.Tests.csproj --configuration Release --no-restore
+        run: dotnet test tests/diashow.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=unit-tests.trx" --results-directory TestResults
 
       - name: Run UI tests
-        run: dotnet test ui-tests/diashow.UiTests.csproj --configuration Release --no-restore
+        run: dotnet test ui-tests/diashow.UiTests.csproj --configuration Release --no-restore --logger "trx;LogFileName=ui-tests.trx" --results-directory TestResults
+
+      - name: Publish test summary
+        if: always()
+        shell: pwsh
+        run: |
+          $results = Get-ChildItem TestResults -Filter *.trx -File -ErrorAction SilentlyContinue
+          Add-Content $env:GITHUB_STEP_SUMMARY '## Test results'
+          Add-Content $env:GITHUB_STEP_SUMMARY ''
+          Add-Content $env:GITHUB_STEP_SUMMARY '| Test suite | Total | Passed | Failed | Skipped |'
+          Add-Content $env:GITHUB_STEP_SUMMARY '| --- | ---: | ---: | ---: | ---: |'
+
+          if ($null -eq $results) {
+            Add-Content $env:GITHUB_STEP_SUMMARY '| No test results were generated | - | - | - | - |'
+            exit 0
+          }
+
+          foreach ($result in $results) {
+            [xml]$trx = Get-Content $result.FullName
+            $counters = $trx.TestRun.ResultSummary.Counters
+            $failed = [int]$counters.failed + [int]$counters.error
+            $skipped = [int]$counters.notExecuted
+            $suite = [IO.Path]::GetFileNameWithoutExtension($result.Name)
+            Add-Content $env:GITHUB_STEP_SUMMARY "| $suite | $($counters.total) | $($counters.passed) | $failed | $skipped |"
+          }
 
       - name: Upload UI test screenshots
         if: always()
