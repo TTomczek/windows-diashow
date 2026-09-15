@@ -15,18 +15,22 @@ public abstract class UiTestBase : IDisposable
     private readonly string _settingsDirectory;
     protected Window MainWindow { get; }
 
-    protected UiTestBase(Func<(string Path, Action Cleanup)>? testDataFactory = null)
+    protected UiTestBase(
+        Func<(string Path, Action Cleanup)>? testDataFactory = null,
+        Action<AppSettings>? configureSettings = null)
     {
         var testData = testDataFactory?.Invoke();
         _cleanup = testData?.Cleanup;
         _settingsDirectory = Path.Combine(Path.GetTempPath(), $"diashow-ui-settings-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_settingsDirectory);
-        new AppSettings
+        var settings = new AppSettings
         {
             Language = "en",
             QueuePreviewVisible = true,
             ImageDurationSeconds = 60
-        }.Save(Path.Combine(_settingsDirectory, "settings.json"));
+        };
+        configureSettings?.Invoke(settings);
+        settings.Save(Path.Combine(_settingsDirectory, "settings.json"));
         var executablePath = Path.Combine(AppContext.BaseDirectory, "Diashow.exe");
         var startInfo = new ProcessStartInfo
         {

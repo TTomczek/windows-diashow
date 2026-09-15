@@ -39,6 +39,7 @@ public partial class MainWindow : Window
     private readonly UpdateManager? _updateManager;
     private Playlist? _playlist;
     private CancellationTokenSource? _playbackCancellation;
+    private PlaybackAdvanceGate _playbackAdvanceGate = new();
     private CancellationTokenSource? _scanCancellation;
     private MediaFolderMonitor? _folderMonitor;
     private string? _requestedPath;
@@ -254,6 +255,7 @@ public partial class MainWindow : Window
         _playbackCancellation?.Cancel();
         StopGif();
         _playbackCancellation = new CancellationTokenSource();
+        _playbackAdvanceGate = new PlaybackAdvanceGate(preservePause);
         _paused = preservePause;
         SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769",
             Localization.Get(_paused ? "Resume" : "Pause"));
@@ -724,7 +726,8 @@ public partial class MainWindow : Window
         try
         {
             await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _settings.ImageDurationSeconds)), token);
-            if (!token.IsCancellationRequested && !_paused) Dispatcher.Invoke(GoNext);
+            await _playbackAdvanceGate.WaitUntilResumedAsync(token);
+            if (!token.IsCancellationRequested) Dispatcher.Invoke(GoNext);
         }
         catch (TaskCanceledException) { }
     }
@@ -756,6 +759,10 @@ public partial class MainWindow : Window
     private void TogglePause()
     {
         _paused = !_paused;
+        if (_paused)
+            _playbackAdvanceGate.Pause();
+        else
+            _playbackAdvanceGate.Resume();
         if (VideoView.Visibility == Visibility.Visible)
         {
             if (_paused) VideoView.Pause(); else VideoView.Play();
