@@ -276,7 +276,6 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Slider x:Name="VideoProgress" Grid.Row="0" Height="24" Margin="0,0,0,8"
                         Minimum="0" Maximum="1" SmallChange="10" LargeChange="10"
@@ -316,7 +315,7 @@
         <Border x:Name="SettingsPanel" Background="#F01D1D24" Padding="24"
                 Width="360" HorizontalAlignment="Right" VerticalAlignment="Top"
                 MaxHeight="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=ActualHeight}"
-                Visibility="Collapsed">
+                Visibility="Collapsed" Panel.ZIndex="3">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                           CanContentScroll="False" Padding="0,0,10,0">
                 <StackPanel>
@@ -378,6 +377,7 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
