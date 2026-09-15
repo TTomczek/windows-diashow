@@ -46,6 +46,7 @@ public sealed class AppSettings
     public double FadeDurationSeconds { get; set; } = 0.35;
     public bool PreloadEnabled { get; set; } = true;
     public int PreloadCount { get; set; } = 4;
+    public bool QueuePreviewVisible { get; set; } = true;
     public string? LastFolder { get; set; }
 
     private static string FilePath => Path.Combine(

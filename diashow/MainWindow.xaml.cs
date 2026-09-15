@@ -14,6 +14,9 @@ using Color = System.Windows.Media.Color;
 using Cursors = System.Windows.Input.Cursors;
 using FontFamily = System.Windows.Media.FontFamily;
 using Forms = System.Windows.Forms;
+using HorizontalAlignment = System.Windows.HorizontalAlignment;
+using WpfImage = System.Windows.Controls.Image;
+using WpfBrushes = System.Windows.Media.Brushes;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using Point = System.Windows.Point;
@@ -23,6 +26,11 @@ namespace diashow;
 public partial class MainWindow : Window
 {
     private const int DiscoveryBatchSize = 500;
+    private const double PreviewGap = 8;
+    private const double PreviewItemWidth = 96;
+    private const double PreviewItemHeight = 64;
+    private const double PreviewSelectedWidth = 128;
+    private const double PreviewSelectedHeight = 80;
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly ImagePreloader _imagePreloader = new();
     private readonly DispatcherTimer _controlsTimer = new() { Interval = TimeSpan.FromSeconds(3) };
@@ -46,6 +54,9 @@ public partial class MainWindow : Window
     private int _gifCompletedLoops;
     private int _gifFrameIndex;
     private int _transitionVersion;
+    private int _previewGeneration;
+    private readonly Dictionary<string, BitmapSource> _previewThumbnails =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public MainWindow(string[] args, UpdateManager? updateManager = null)
     {
@@ -56,6 +67,8 @@ public partial class MainWindow : Window
         {
             Controls.Opacity = 0;
             Controls.IsEnabled = false;
+            QueuePreviewHost.Opacity = 0;
+            QueuePreviewHost.IsEnabled = false;
             Cursor = Cursors.None;
         };
         _videoProgressTimer.Tick += (_, _) => UpdateVideoProgress();
@@ -105,8 +118,11 @@ public partial class MainWindow : Window
         _folderMonitor.MediaAdded += FolderMonitor_MediaAdded;
         _folderMonitor.MediaRemoved += FolderMonitor_MediaRemoved;
         _imagePreloader.Clear();
+        _previewThumbnails.Clear();
+        _previewGeneration++;
         var playlist = new Playlist([], _settings.Order, _settings.MediaFilter, _settings.Direction);
         _playlist = playlist;
+        UpdateQueuePreview();
         ImageView.Source = null;
         StopVideoProgress();
         VideoView.Stop();
@@ -156,6 +172,7 @@ public partial class MainWindow : Window
 
                     playlist.AddItems(batch);
                     UpdateItemCounter();
+                    UpdateQueuePreview();
                 });
             }
         }
@@ -172,6 +189,7 @@ public partial class MainWindow : Window
 
                 playlist.AddItems(batch);
                 UpdateItemCounter();
+                UpdateQueuePreview();
             });
         }
         if (!started)
@@ -203,6 +221,7 @@ public partial class MainWindow : Window
                 return;
             _playlist.AddItems([item]);
             UpdateItemCounter();
+            UpdateQueuePreview();
             PreloadUpcoming();
         });
 
@@ -214,16 +233,21 @@ public partial class MainWindow : Window
             var currentRemoved = _playlist.RemoveItems([path]);
             _imagePreloader.Clear();
             UpdateItemCounter();
+            UpdateQueuePreview();
             if (currentRemoved)
                 GoNext();
         });
 
-    private async void ShowItem(MediaItem item)
+    private async void ShowItem(MediaItem item, bool preservePlaybackState = false)
     {
         var transitionVersion = ++_transitionVersion;
+        var preservePause = preservePlaybackState && _paused;
         _playbackCancellation?.Cancel();
         StopGif();
         _playbackCancellation = new CancellationTokenSource();
+        _paused = preservePause;
+        SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769",
+            Localization.Get(_paused ? "Resume" : "Pause"));
         _currentVideoAudible = false;
         SetButtonIcon(AudioButton, "\uE767", Localization.Get("Unmute"));
         var relativePath = _rootFolder is null ? item.Path : Path.GetRelativePath(_rootFolder, item.Path);
@@ -233,6 +257,7 @@ public partial class MainWindow : Window
         AutomationProperties.SetName(ImageView, mediaName);
         AutomationProperties.SetName(VideoView, mediaName);
         UpdateItemCounter();
+        UpdateQueuePreview();
         if (item.Kind == MediaKind.Image)
         {
             VideoView.Stop();
@@ -284,12 +309,15 @@ public partial class MainWindow : Window
             VideoView.Source = new Uri(item.Path);
             VideoView.Volume = 0;
             VideoView.Play();
+            if (preservePause)
+                VideoView.Pause();
             _videoProgressTimer.Start();
             AnimateTransition(VideoView);
             PreloadUpcoming();
         }
         SetButtonIcon(PauseButton, "\uE769", Localization.Get("Pause"));
-        _paused = false;
+        if (preservePause)
+            SetButtonIcon(PauseButton, "\uE768", Localization.Get("Resume"));
     }
 
     private sealed record GifAnimation(
@@ -440,6 +468,227 @@ public partial class MainWindow : Window
             _imagePreloader.Preload(_playlist.PreloadCandidates(_settings.PreloadCount));
     }
 
+    private void QueuePreviewPanel_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        UpdateQueuePreview();
+
+    private void Controls_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        QueuePreviewHost.Margin = new Thickness(0, 0, 0, e.NewSize.Height);
+
+    private void UpdateQueuePreview()
+    {
+        QueuePreviewItems.Children.Clear();
+        var generation = ++_previewGeneration;
+        if (!_settings.QueuePreviewVisible)
+        {
+            QueuePreviewPanel.Visibility = Visibility.Collapsed;
+            QueueToggleButton.IsEnabled = _playlist?.TotalCount >= 2;
+            QueuePreviousButton.IsEnabled = false;
+            QueueNextButton.IsEnabled = false;
+            return;
+        }
+
+        QueuePreviewPanel.Visibility = Visibility.Visible;
+        if (_playlist?.Current is not { } current || _playlist.TotalCount < 2)
+        {
+            QueuePreviewPanel.Visibility = Visibility.Collapsed;
+            QueueToggleButton.IsEnabled = false;
+            QueuePreviousButton.IsEnabled = false;
+            QueueNextButton.IsEnabled = false;
+            return;
+        }
+
+        QueueToggleButton.IsEnabled = true;
+        var width = QueuePreviewPanel.ActualWidth > 0
+            ? QueuePreviewPanel.ActualWidth
+            : (Root.ActualWidth > 0 ? Root.ActualWidth : ActualWidth);
+        var available = Math.Max(0, width - 112);
+        var pairsThatFit = (int)Math.Floor(
+            (available - PreviewSelectedWidth) / (2 * (PreviewItemWidth + PreviewGap)));
+        var previous = _playlist.PreviewPreviousItems(Math.Max(0, pairsThatFit));
+        var upcoming = _playlist.PreviewUpcomingItems(Math.Max(0, pairsThatFit));
+
+        QueueToggleButton.IsEnabled = previous.Count > 0 || upcoming.Count > 0;
+        var position = _playlist.CurrentPosition;
+        if (upcoming.Count > previous.Count)
+            AddPreviewSpacer((upcoming.Count - previous.Count) * (PreviewItemWidth + PreviewGap));
+
+        for (var index = previous.Count - 1; index >= 0; index--)
+        {
+            var item = previous[index];
+            AddPreviewButton(item, selected: false, position - index - 1, generation);
+        }
+
+        AddPreviewButton(current, selected: true, position, generation);
+
+        for (var index = 0; index < upcoming.Count; index++)
+            AddPreviewButton(upcoming[index], selected: false, position + index + 1, generation);
+
+        if (previous.Count > upcoming.Count)
+            AddPreviewSpacer((previous.Count - upcoming.Count) * (PreviewItemWidth + PreviewGap));
+
+        if (QueuePreviewItems.Children[^1] is Button lastButton)
+            lastButton.Margin = new Thickness(0);
+        QueuePreviousButton.IsEnabled = previous.Count > 0 && _playlist.CanGoBack;
+        QueueNextButton.IsEnabled = upcoming.Count > 0;
+    }
+
+    private void AddPreviewSpacer(double width) =>
+        QueuePreviewItems.Children.Add(new Border { Width = width, IsHitTestVisible = false });
+
+    private void AddPreviewButton(MediaItem item, bool selected, int position, int generation)
+    {
+        var image = new WpfImage
+        {
+            Stretch = Stretch.Uniform,
+            Source = null,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+        var fallback = new TextBlock
+        {
+            Text = item.Kind == MediaKind.Video ? "\uE768" : "\uE91B",
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = selected ? 25 : 20,
+            Foreground = WpfBrushes.White,
+            Opacity = 0.8,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false
+        };
+        var content = new Grid
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0xFF, 0x2A, 0x2A, 0x32))
+        };
+        content.Children.Add(image);
+        content.Children.Add(fallback);
+        if (item.Kind == MediaKind.Video)
+            content.Children.Add(new TextBlock
+            {
+                Text = "\uE768",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = selected ? 25 : 20,
+                Foreground = WpfBrushes.White,
+                Opacity = 0.8,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false
+            });
+
+        var baseBorderBrush = selected
+            ? WpfBrushes.White
+            : new SolidColorBrush(Color.FromArgb(0x88, 0xFF, 0xFF, 0xFF));
+        var previewBorder = new Border
+        {
+            Background = WpfBrushes.Black,
+            BorderBrush = baseBorderBrush,
+            BorderThickness = new Thickness(selected ? 2 : 1),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = content
+        };
+        var button = new Button
+        {
+            Style = (Style)Root.FindResource("PreviewButton"),
+            Width = selected ? PreviewSelectedWidth : PreviewItemWidth,
+            Height = selected ? PreviewSelectedHeight : PreviewItemHeight,
+            Margin = new Thickness(0, 0, PreviewGap, 0),
+            Padding = new Thickness(0),
+            Content = previewBorder,
+            Background = WpfBrushes.Transparent,
+            BorderBrush = WpfBrushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Focusable = true,
+            Tag = item
+        };
+        var filename = Path.GetFileName(item.Path);
+        AutomationProperties.SetName(button, Localization.Get("QueuePosition", Math.Max(1, position), filename));
+        AutomationProperties.SetHelpText(button, filename);
+        button.Click += QueuePreviewItem_Click;
+        button.MouseEnter += (_, _) => previewBorder.BorderBrush = WpfBrushes.White;
+        button.MouseLeave += (_, _) => previewBorder.BorderBrush = baseBorderBrush;
+        QueuePreviewItems.Children.Add(button);
+
+        if (_previewThumbnails.TryGetValue(item.Path, out var thumbnail))
+        {
+            image.Source = thumbnail;
+            fallback.Visibility = Visibility.Collapsed;
+            SizePreviewBorder(previewBorder, thumbnail, selected);
+        }
+        else
+            _ = LoadPreviewThumbnailAsync(item, image, fallback, previewBorder, selected, generation);
+    }
+
+    private async Task LoadPreviewThumbnailAsync(
+        MediaItem item,
+        WpfImage target,
+        TextBlock fallback,
+        Border previewBorder,
+        bool selected,
+        int generation)
+    {
+        try
+        {
+            BitmapSource? thumbnail = item.Kind == MediaKind.Video
+                ? await Task.Run(() => ShellThumbnail.Load(item.Path, 256, 160))
+                : await _imagePreloader.GetAsync(item.Path, CancellationToken.None);
+            if (thumbnail is null)
+                return;
+
+            _previewThumbnails[item.Path] = thumbnail;
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (generation == _previewGeneration)
+                {
+                    target.Source = thumbnail;
+                    fallback.Visibility = Visibility.Collapsed;
+                    SizePreviewBorder(previewBorder, thumbnail, selected);
+                }
+            });
+        }
+        catch (Exception)
+        {
+            // A missing or unsupported preview keeps its clickable fallback.
+        }
+    }
+
+    private static void SizePreviewBorder(Border border, BitmapSource thumbnail, bool selected)
+    {
+        var maxWidth = selected ? PreviewSelectedWidth : PreviewItemWidth;
+        var maxHeight = selected ? PreviewSelectedHeight : PreviewItemHeight;
+        var aspectRatio = (double)thumbnail.PixelWidth / thumbnail.PixelHeight;
+        var width = maxWidth;
+        var height = width / aspectRatio;
+        if (height > maxHeight)
+        {
+            height = maxHeight;
+            width = height * aspectRatio;
+        }
+
+        border.Width = Math.Max(1, width);
+        border.Height = Math.Max(1, height);
+    }
+
+    private void QueuePreviewItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: MediaItem item } ||
+            _playlist?.JumpTo(item.Path) is not { } target)
+            return;
+
+        ShowItem(target, preservePlaybackState: true);
+    }
+
+    private void QueuePrevious_Click(object sender, RoutedEventArgs e)
+    {
+        if (_playlist?.CanGoBack == true)
+            GoPrevious();
+    }
+
+    private void QueueNext_Click(object sender, RoutedEventArgs e)
+    {
+        if (_playlist?.PreviewUpcomingItems(1).Count > 0)
+            GoNext();
+    }
+
     private async Task WaitThenNext(CancellationToken token)
     {
         try
@@ -497,6 +746,7 @@ public partial class MainWindow : Window
         UpdateVideoToggle();
         _playlist?.SetOptions(_settings.Order, _settings.MediaFilter, _settings.Direction);
         UpdateItemCounter();
+        UpdateQueuePreview();
         if (_playlist?.Current is { } current &&
             !IsIncluded(current.Kind, _settings.MediaFilter))
             GoNext();
@@ -724,12 +974,18 @@ public partial class MainWindow : Window
         MuteShortcut.Text = Localization.Get("MuteVideo");
         CloseShortcut.Text = Localization.Get("CloseSettings");
         RevealShortcut.Text = Localization.Get("RevealCurrent");
+        QueuePreviewShortcut.Text = Localization.Get("ToggleQueuePreview");
         AccessToastDismissHint.Text = Localization.Get("PressToDismiss");
         AccessToast.SetValue(AutomationProperties.NameProperty, Localization.Get("DismissFileError"));
         VideoProgress.ToolTip = Localization.Get("VideoPosition");
         SetButtonIcon(PreviousButton, "\uE100", Localization.Get("PreviousItem"));
         SetButtonIcon(NextButton, "\uE101", Localization.Get("NextItem"));
+        SetButtonIcon(QueuePreviousButton, "\uE100", Localization.Get("PreviousPreview"));
+        SetButtonIcon(QueueNextButton, "\uE101", Localization.Get("NextPreview"));
         SetButtonIcon(RevealButton, "\uE8B7", Localization.Get("Reveal"));
+        SetButtonIcon(QueueToggleButton, _settings.QueuePreviewVisible ? "\uE70D" : "\uE70E",
+            Localization.Get(_settings.QueuePreviewVisible ? "HideQueuePreview" : "ShowQueuePreview"));
+        AutomationProperties.SetName(QueuePreviewPanel, Localization.Get("QueuePreview"));
         UpdateFullscreenButton(WindowStyle == WindowStyle.None);
         SetButtonIcon(AudioButton, _currentVideoAudible ? "\uE74F" : "\uE767",
             Localization.Get(_currentVideoAudible ? "Mute" : "Unmute"));
@@ -780,6 +1036,7 @@ public partial class MainWindow : Window
             _ => 0
         };
         PreloadBox.IsChecked = _settings.PreloadEnabled;
+        UpdateQueuePreview();
         _settingsUiReady = true;
     }
 
@@ -816,24 +1073,34 @@ public partial class MainWindow : Window
             return;
 
         _lastMousePosition = mousePosition;
+        ShowControls();
+    }
+
+    private void ShowControls()
+    {
+        var wasHidden = !QueuePreviewHost.IsEnabled;
         Cursor = Cursors.Arrow;
         Controls.IsEnabled = true;
         Controls.Opacity = 1;
+        QueuePreviewHost.IsEnabled = true;
+        QueuePreviewHost.Opacity = 1;
         _controlsTimer.Stop();
         _controlsTimer.Start();
+        if (wasHidden && _settings.QueuePreviewVisible)
+            UpdateQueuePreview();
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Tab && !Controls.IsEnabled)
-        {
-            Controls.IsEnabled = true;
-            Controls.Opacity = 1;
-        }
+            ShowControls();
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
+        if (e.OriginalSource is Button)
+            return;
+
         switch (e.Key)
         {
             case Key.Space: TogglePause(); break;
@@ -843,6 +1110,7 @@ public partial class MainWindow : Window
             case Key.V: ToggleMediaFilter(); break;
             case Key.M: ToggleAudio(); break;
             case Key.E: RevealCurrentInExplorer(); break;
+            case Key.Q: ToggleQueuePreview(); break;
             case Key.Escape:
                 if (SettingsPanel.Visibility == Visibility.Visible) SettingsPanel.Visibility = Visibility.Collapsed;
                 else if (WindowStyle == WindowStyle.None) SetFullscreen(false);
@@ -861,6 +1129,8 @@ public partial class MainWindow : Window
         VideoProgress.Value = 0;
         VideoProgress.Visibility = Visibility.Visible;
         _videoProgressTimer.Start();
+        if (_paused)
+            VideoView.Pause();
     }
 
     private void VideoView_MediaFailed(object sender, ExceptionRoutedEventArgs e)
@@ -989,6 +1259,19 @@ public partial class MainWindow : Window
         SettingsPanel.Visibility = SettingsPanel.Visibility == Visibility.Visible
             ? Visibility.Collapsed : Visibility.Visible;
 
+    private void QueueToggle_Click(object sender, RoutedEventArgs e)
+        => ToggleQueuePreview();
+
+    private void ToggleQueuePreview()
+    {
+        _settings.QueuePreviewVisible = !_settings.QueuePreviewVisible;
+        _settings.Save();
+        ApplyLocalization();
+        UpdateQueuePreview();
+        if (_settings.QueuePreviewVisible)
+            ShowControls();
+    }
+
     private static void SetButtonIcon(Button button, string glyph, string tooltip)
     {
         button.Content = glyph;
@@ -1058,6 +1341,7 @@ public partial class MainWindow : Window
         _settings.PreloadEnabled = PreloadBox.IsChecked == true;
         _settings.Save();
         _playlist?.SetOptions(_settings.Order, _settings.MediaFilter, _settings.Direction);
+        UpdateQueuePreview();
     }
 
     private void ChooseFolder_Click(object sender, RoutedEventArgs e)

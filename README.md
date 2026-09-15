@@ -66,6 +66,7 @@ The media filter button cycles between images only, videos only, and both. Setti
 | `V` | Cycle images, videos, or both |
 | `M` | Mute or unmute the current video |
 | `E` | Reveal the current file in File Explorer |
+| `Q` | Show or hide the queue preview |
 | `Escape` | Close settings or exit fullscreen |
 
 Video playback uses the Windows media stack. The formats available to play therefore depend on the codecs supported by the Windows installation.

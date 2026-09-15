@@ -284,6 +284,43 @@ public sealed class PlaylistTests
     }
 
     [Fact]
+    public void Preview_items_follow_playback_history_and_jump_without_reordering_it()
+    {
+        var playlist = new Playlist(
+            [Image("a.jpg"), Image("b.jpg"), Image("c.jpg"), Image("d.jpg")],
+            PlaybackOrder.Filename,
+            includeVideos: true);
+
+        Assert.Equal("a.jpg", playlist.Next()!.Path);
+        Assert.Equal("b.jpg", playlist.Next()!.Path);
+        Assert.Equal("c.jpg", playlist.Next()!.Path);
+
+        Assert.Equal(["b.jpg", "a.jpg"], playlist.PreviewPreviousItems(3).Select(item => item.Path));
+        Assert.Equal(["d.jpg"], playlist.PreviewUpcomingItems(3).Select(item => item.Path));
+
+        Assert.Equal("a.jpg", playlist.JumpTo("A.JPG")!.Path);
+        Assert.Equal("a.jpg", playlist.Current!.Path);
+        Assert.Equal(["b.jpg", "c.jpg", "d.jpg"], playlist.PreviewUpcomingItems(3).Select(item => item.Path));
+        Assert.Equal("b.jpg", playlist.Next()!.Path);
+    }
+
+    [Fact]
+    public void Preview_items_obey_the_active_media_filter()
+    {
+        var playlist = new Playlist(
+            [Image("a.jpg"), Video("b.mp4"), Image("c.jpg")],
+            PlaybackOrder.Filename,
+            MediaFilter.Both);
+        playlist.Next();
+        playlist.Next();
+        playlist.SetOptions(PlaybackOrder.Filename, MediaFilter.Images);
+
+        Assert.Equal(["a.jpg"], playlist.PreviewPreviousItems(3).Select(item => item.Path));
+        Assert.Equal(["c.jpg"], playlist.PreviewUpcomingItems(3).Select(item => item.Path));
+        Assert.Null(playlist.JumpTo("b.mp4"));
+    }
+
+    [Fact]
     public void Empty_playlist_reports_no_current_item_and_returns_null()
     {
         var playlist = new Playlist([], PlaybackOrder.Random, includeVideos: true);

@@ -74,9 +74,16 @@ public static class Localization
                 ["CycleMedia"] = "Cycle images, videos, or both",
                 ["MuteVideo"] = "Mute or unmute video",
                 ["CloseSettings"] = "Close settings or exit fullscreen",
+                ["ToggleQueuePreview"] = "Show or hide queue preview",
                 ["Close"] = "Close",
                 ["ChooseFolderDescription"] = "Choose a folder for the slideshow",
-                ["MediaName"] = "{0}: {1}"
+                ["MediaName"] = "{0}: {1}",
+                ["QueuePreview"] = "Queue preview",
+                ["ShowQueuePreview"] = "Show queue preview",
+                ["HideQueuePreview"] = "Hide queue preview",
+                ["PreviousPreview"] = "Previous preview item",
+                ["NextPreview"] = "Next preview item",
+                ["QueuePosition"] = "Queue item {0}: {1}"
             },
             [AppLanguage.German] = new Dictionary<string, string>
             {
@@ -138,9 +145,16 @@ public static class Localization
                 ["CycleMedia"] = "Bilder, Videos oder beides wechseln",
                 ["MuteVideo"] = "Video stummschalten oder Ton einschalten",
                 ["CloseSettings"] = "Einstellungen schließen oder Vollbild beenden",
+                ["ToggleQueuePreview"] = "Wiedergabevorschau anzeigen oder ausblenden",
                 ["Close"] = "Schließen",
                 ["ChooseFolderDescription"] = "Ordner für die Diashow auswählen",
-                ["MediaName"] = "{0}: {1}"
+                ["MediaName"] = "{0}: {1}",
+                ["QueuePreview"] = "Wiedergabevorschau",
+                ["ShowQueuePreview"] = "Wiedergabevorschau anzeigen",
+                ["HideQueuePreview"] = "Wiedergabevorschau ausblenden",
+                ["PreviousPreview"] = "Vorheriges Vorschau-Element",
+                ["NextPreview"] = "Nächstes Vorschau-Element",
+                ["QueuePosition"] = "Wiedergabeelement {0}: {1}"
             },
             [AppLanguage.Spanish] = new Dictionary<string, string>
             {
@@ -202,9 +216,16 @@ public static class Localization
                 ["CycleMedia"] = "Cambiar entre imágenes, vídeos o ambos",
                 ["MuteVideo"] = "Silenciar o activar el sonido del vídeo",
                 ["CloseSettings"] = "Cerrar configuración o salir de pantalla completa",
+                ["ToggleQueuePreview"] = "Mostrar u ocultar la vista previa de la cola",
                 ["Close"] = "Cerrar",
                 ["ChooseFolderDescription"] = "Elige una carpeta para la presentación",
-                ["MediaName"] = "{0}: {1}"
+                ["MediaName"] = "{0}: {1}",
+                ["QueuePreview"] = "Vista previa de la cola",
+                ["ShowQueuePreview"] = "Mostrar vista previa de la cola",
+                ["HideQueuePreview"] = "Ocultar vista previa de la cola",
+                ["PreviousPreview"] = "Elemento anterior de la vista previa",
+                ["NextPreview"] = "Siguiente elemento de la vista previa",
+                ["QueuePosition"] = "Elemento {0} de la cola: {1}"
             }
         };
 
