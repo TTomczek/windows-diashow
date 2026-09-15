@@ -16,7 +16,7 @@ public sealed class LargeQueueUiTests : UiTestBase
     {
     }
 
-    [Fact]
+    [Fact]  
     public void PreviewIsGeneratedAndSlideshowAdvancesWithLargeQueue()
     {
         WaitUntil(() => MainWindow.FindAllDescendants()

@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private readonly ImagePreloader _imagePreloader = new();
     private readonly DispatcherTimer _controlsTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _videoProgressTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly DispatcherTimer _previewRefreshTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly UpdateManager? _updateManager;
     private Playlist? _playlist;
     private CancellationTokenSource? _playbackCancellation;
@@ -55,6 +56,7 @@ public partial class MainWindow : Window
     private int _gifFrameIndex;
     private int _transitionVersion;
     private int _previewGeneration;
+    private CancellationTokenSource? _previewThumbnailCancellation;
     private readonly Dictionary<string, BitmapSource> _previewThumbnails =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -72,6 +74,11 @@ public partial class MainWindow : Window
             Cursor = Cursors.None;
         };
         _videoProgressTimer.Tick += (_, _) => UpdateVideoProgress();
+        _previewRefreshTimer.Tick += (_, _) =>
+        {
+            _previewRefreshTimer.Stop();
+            UpdateQueuePreview();
+        };
         VideoView.Volume = 0;
         Localization.SetLanguage(_settings.Language);
         ApplyLocalization();
@@ -172,7 +179,7 @@ public partial class MainWindow : Window
 
                     playlist.AddItems(batch);
                     UpdateItemCounter();
-                    UpdateQueuePreview();
+                    RequestQueuePreviewUpdate();
                 });
             }
         }
@@ -189,7 +196,7 @@ public partial class MainWindow : Window
 
                 playlist.AddItems(batch);
                 UpdateItemCounter();
-                UpdateQueuePreview();
+                RequestQueuePreviewUpdate();
             });
         }
         if (!started)
@@ -471,11 +478,21 @@ public partial class MainWindow : Window
     private void QueuePreviewPanel_SizeChanged(object sender, SizeChangedEventArgs e) =>
         UpdateQueuePreview();
 
+    private void RequestQueuePreviewUpdate()
+    {
+        _previewRefreshTimer.Stop();
+        _previewRefreshTimer.Start();
+    }
+
     private void Controls_SizeChanged(object sender, SizeChangedEventArgs e) =>
         QueuePreviewHost.Margin = new Thickness(0, 0, 0, e.NewSize.Height);
 
     private void UpdateQueuePreview()
     {
+        _previewThumbnailCancellation?.Cancel();
+        _previewThumbnailCancellation?.Dispose();
+        _previewThumbnailCancellation = new CancellationTokenSource();
+        var cancellationToken = _previewThumbnailCancellation.Token;
         QueuePreviewItems.Children.Clear();
         var generation = ++_previewGeneration;
         if (!_settings.QueuePreviewVisible)
@@ -515,13 +532,14 @@ public partial class MainWindow : Window
         for (var index = previous.Count - 1; index >= 0; index--)
         {
             var item = previous[index];
-            AddPreviewButton(item, selected: false, position - index - 1, generation);
+            AddPreviewButton(item, selected: false, position - index - 1, generation, cancellationToken);
         }
 
-        AddPreviewButton(current, selected: true, position, generation);
+        AddPreviewButton(current, selected: true, position, generation, cancellationToken);
 
         for (var index = 0; index < upcoming.Count; index++)
-            AddPreviewButton(upcoming[index], selected: false, position + index + 1, generation);
+            AddPreviewButton(upcoming[index], selected: false, position + index + 1, generation,
+                cancellationToken);
 
         if (previous.Count > upcoming.Count)
             AddPreviewSpacer((previous.Count - upcoming.Count) * (PreviewItemWidth + PreviewGap));
@@ -535,7 +553,12 @@ public partial class MainWindow : Window
     private void AddPreviewSpacer(double width) =>
         QueuePreviewItems.Children.Add(new Border { Width = width, IsHitTestVisible = false });
 
-    private void AddPreviewButton(MediaItem item, bool selected, int position, int generation)
+    private void AddPreviewButton(
+        MediaItem item,
+        bool selected,
+        int position,
+        int generation,
+        CancellationToken cancellationToken)
     {
         var image = new WpfImage
         {
@@ -615,7 +638,8 @@ public partial class MainWindow : Window
             SizePreviewBorder(previewBorder, thumbnail, selected);
         }
         else
-            _ = LoadPreviewThumbnailAsync(item, image, fallback, previewBorder, selected, generation);
+            _ = LoadPreviewThumbnailAsync(
+                item, image, fallback, previewBorder, selected, generation, cancellationToken);
     }
 
     private async Task LoadPreviewThumbnailAsync(
@@ -624,26 +648,30 @@ public partial class MainWindow : Window
         TextBlock fallback,
         Border previewBorder,
         bool selected,
-        int generation)
+        int generation,
+        CancellationToken cancellationToken)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             BitmapSource? thumbnail = item.Kind == MediaKind.Video
-                ? await Task.Run(() => ShellThumbnail.Load(item.Path, 256, 160))
-                : await _imagePreloader.GetAsync(item.Path, CancellationToken.None);
+                ? await Task.Run(() => ShellThumbnail.Load(item.Path, 256, 160), cancellationToken)
+                : await _imagePreloader.GetAsync(item.Path, cancellationToken);
             if (thumbnail is null)
                 return;
 
             _previewThumbnails[item.Path] = thumbnail;
             await Dispatcher.InvokeAsync(() =>
             {
-                if (generation == _previewGeneration)
-                {
-                    target.Source = thumbnail;
-                    fallback.Visibility = Visibility.Collapsed;
-                    SizePreviewBorder(previewBorder, thumbnail, selected);
-                }
+                if (generation != _previewGeneration || cancellationToken.IsCancellationRequested)
+                    return;
+                target.Source = thumbnail;
+                fallback.Visibility = Visibility.Collapsed;
+                SizePreviewBorder(previewBorder, thumbnail, selected);
             });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch (Exception)
         {
@@ -1383,12 +1411,16 @@ public partial class MainWindow : Window
         _updateManager?.PrepareForExit();
         _playbackCancellation?.Cancel();
         _scanCancellation?.Cancel();
+        _previewRefreshTimer.Stop();
+        _previewThumbnailCancellation?.Cancel();
         _folderMonitor?.Dispose();
         _folderMonitor = null;
         StopGif();
         StopVideoProgress();
         VideoView.Stop();
         _imagePreloader.Dispose();
+        _previewThumbnailCancellation?.Dispose();
+        _previewThumbnailCancellation = null;
         _settings.Save();
     }
 }
