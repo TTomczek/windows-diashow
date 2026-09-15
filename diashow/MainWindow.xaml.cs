@@ -1092,13 +1092,33 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Tab && !Controls.IsEnabled)
+        if (e.OriginalSource is Button)
+        {
+            if (e.Key == Key.Right)
+            {
+                GoNext();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Left)
+            {
+                GoPrevious();
+                e.Handled = true;
+                return;
+            }
+        }
+
+        if (e.Key == Key.Tab)
+        {
             ShowControls();
+            e.Handled = true;
+        }
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.OriginalSource is Button)
+        if (e.OriginalSource is Button && e.Key is not (Key.Left or Key.Right))
             return;
 
         switch (e.Key)

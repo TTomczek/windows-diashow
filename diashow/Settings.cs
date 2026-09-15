@@ -49,8 +49,9 @@ public sealed class AppSettings
     public bool QueuePreviewVisible { get; set; } = true;
     public string? LastFolder { get; set; }
 
-    private static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "diashow", "settings.json");
+    private static string FilePath =>
+        Environment.GetEnvironmentVariable("DIASHOW_SETTINGS_PATH")
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "diashow", "settings.json");
 
     public static AppSettings Load()
         => Load(FilePath);

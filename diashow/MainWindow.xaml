@@ -271,7 +271,8 @@
         </StackPanel>
 
         <Border x:Name="Controls" Background="#CC17171C" Padding="14"
-                VerticalAlignment="Bottom" Opacity="0" SizeChanged="Controls_SizeChanged">
+                VerticalAlignment="Bottom" Opacity="0" IsEnabled="False"
+                SizeChanged="Controls_SizeChanged">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
