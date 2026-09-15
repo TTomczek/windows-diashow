@@ -57,6 +57,8 @@ public partial class MainWindow : Window
     private int _transitionVersion;
     private int _previewGeneration;
     private CancellationTokenSource? _previewThumbnailCancellation;
+    private readonly List<(Animatable Target, DependencyProperty Property, AnimationClock Clock)>
+        _kenBurnsAnimations = [];
     private readonly Dictionary<string, BitmapSource> _previewThumbnails =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -758,6 +760,11 @@ public partial class MainWindow : Window
         {
             if (_paused) VideoView.Pause(); else VideoView.Play();
         }
+        foreach (var animation in _kenBurnsAnimations)
+        {
+            if (_paused) animation.Clock.Controller?.Pause();
+            else animation.Clock.Controller?.Resume();
+        }
         SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769",
             Localization.Get(_paused ? "Resume" : "Pause"));
     }
@@ -902,6 +909,7 @@ public partial class MainWindow : Window
 
     private void ResetImageTransition()
     {
+        StopKenBurns();
         ImageView.BeginAnimation(OpacityProperty, null);
         IncomingImageView.BeginAnimation(OpacityProperty, null);
         ImageView.Opacity = 1;
@@ -916,6 +924,7 @@ public partial class MainWindow : Window
 
     private void PrepareLayeredTransition()
     {
+        StopKenBurns();
         ImageView.BeginAnimation(OpacityProperty, null);
         IncomingImageView.BeginAnimation(OpacityProperty, null);
         ImageView.Opacity = 1;
@@ -930,8 +939,9 @@ public partial class MainWindow : Window
         transition is TransitionMode.Slide or TransitionMode.Crossfade or TransitionMode.Zoom
             or TransitionMode.Cover or TransitionMode.BlurDissolve;
 
-    private void AnimateKenBurns(UIElement element, int transitionVersion)
+    private void AnimateKenBurns(FrameworkElement element, int transitionVersion)
     {
+        StopKenBurns();
         var scale = new ScaleTransform(1, 1);
         var translate = new TranslateTransform();
         var transforms = new TransformGroup();
@@ -942,12 +952,36 @@ public partial class MainWindow : Window
 
         var duration = TimeSpan.FromSeconds(Math.Max(1, _settings.ImageDurationSeconds));
         var direction = transitionVersion % 2 == 0 ? 1 : -1;
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, 1.12, duration));
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, 1.12, duration));
-        translate.BeginAnimation(TranslateTransform.XProperty,
+        AddKenBurnsAnimation(scale, ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(1, 1.12, duration));
+        AddKenBurnsAnimation(scale, ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(1, 1.12, duration));
+        AddKenBurnsAnimation(translate, TranslateTransform.XProperty,
             new DoubleAnimation(-18 * direction, 18 * direction, duration));
-        translate.BeginAnimation(TranslateTransform.YProperty,
+        AddKenBurnsAnimation(translate, TranslateTransform.YProperty,
             new DoubleAnimation(10 * direction, -10 * direction, duration));
+    }
+
+    private void AddKenBurnsAnimation(
+        Animatable target,
+        DependencyProperty property,
+        DoubleAnimation animation)
+    {
+        var clock = animation.CreateClock();
+        target.ApplyAnimationClock(property, clock);
+        _kenBurnsAnimations.Add((target, property, clock));
+        if (_paused)
+            clock.Controller?.Pause();
+    }
+
+    private void StopKenBurns()
+    {
+        foreach (var animation in _kenBurnsAnimations)
+        {
+            animation.Target.ApplyAnimationClock(animation.Property, null);
+            animation.Clock.Controller?.Remove();
+        }
+        _kenBurnsAnimations.Clear();
     }
 
     private void ShowMessage(string localizationKey)

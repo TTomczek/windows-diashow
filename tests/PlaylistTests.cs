@@ -205,6 +205,23 @@ public sealed class PlaylistTests
             $"Adding 100,000 items took {stopwatch.Elapsed}.");
     }
 
+    [Fact]
+    public void Preview_items_remain_bounded_and_navigation_advances_for_large_queue()
+    {
+        var items = Enumerable.Range(0, 100_000)
+            .Select(index => Image($"{index:D6}.jpg"))
+            .ToArray();
+        var playlist = new Playlist(items, PlaybackOrder.Filename, includeVideos: true);
+
+        Assert.Equal("000000.jpg", playlist.Next()!.Path);
+        Assert.Equal(
+            ["000001.jpg", "000002.jpg", "000003.jpg"],
+            playlist.PreviewUpcomingItems(3).Select(item => item.Path));
+        Assert.Empty(playlist.PreviewPreviousItems(3));
+        Assert.Equal("000001.jpg", playlist.Next()!.Path);
+        Assert.Equal(2, playlist.CurrentPosition);
+    }
+
     [Theory]
     [InlineData(PlaybackOrder.Filename, SortDirection.Ascending)]
     [InlineData(PlaybackOrder.Filename, SortDirection.Descending)]
