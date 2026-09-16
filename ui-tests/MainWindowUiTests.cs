@@ -1,5 +1,6 @@
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Input;
+using FlaUI.Core.WindowsAPI;
 
 namespace diashow.UiTests;
 
@@ -36,7 +37,7 @@ public sealed class MainWindowUiTests : UiTestBase
         Mouse.MoveTo(
             bounds.X + bounds.Width / 2,
             bounds.Y + bounds.Height - 50);
-        ClickButton("Resume");
+        Keyboard.Press(VirtualKeyShort.SPACE);
 
         WaitUntil(() => HasName("2 / 2"), TimeSpan.FromSeconds(10));
     }
