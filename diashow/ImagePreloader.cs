@@ -23,6 +23,10 @@ public sealed class ImagePreloader : IDisposable
         {
             return await task.WaitAsync(cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch
         {
             _cache.TryRemove(path, out _);

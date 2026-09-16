@@ -66,6 +66,7 @@ The media filter button cycles between images only, videos only, and both. Setti
 | `V` | Cycle images, videos, or both |
 | `M` | Mute or unmute the current video |
 | `E` | Reveal the current file in File Explorer |
+| `Q` | Show or hide the queue preview |
 | `Escape` | Close settings or exit fullscreen |
 
 Video playback uses the Windows media stack. The formats available to play therefore depend on the codecs supported by the Windows installation.
@@ -112,6 +113,14 @@ dotnet test tests\diashow.Tests.csproj --configuration Release --no-restore
 ```
 
 The tests cover playlist ordering and navigation, media discovery, settings persistence, image decoding, and Explorer integration.
+
+UI tests use FlaUI to launch the application and interact with its Windows UI Automation tree:
+
+```powershell
+dotnet test ui-tests\diashow.UiTests.csproj --configuration Release --no-restore
+```
+
+UI tests require Windows because they launch the WPF application.
 
 ### Publish locally
 

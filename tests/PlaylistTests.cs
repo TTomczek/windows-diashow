@@ -205,6 +205,23 @@ public sealed class PlaylistTests
             $"Adding 100,000 items took {stopwatch.Elapsed}.");
     }
 
+    [Fact]
+    public void Preview_items_remain_bounded_and_navigation_advances_for_large_queue()
+    {
+        var items = Enumerable.Range(0, 100_000)
+            .Select(index => Image($"{index:D6}.jpg"))
+            .ToArray();
+        var playlist = new Playlist(items, PlaybackOrder.Filename, includeVideos: true);
+
+        Assert.Equal("000000.jpg", playlist.Next()!.Path);
+        Assert.Equal(
+            ["000001.jpg", "000002.jpg", "000003.jpg"],
+            playlist.PreviewUpcomingItems(3).Select(item => item.Path));
+        Assert.Empty(playlist.PreviewPreviousItems(3));
+        Assert.Equal("000001.jpg", playlist.Next()!.Path);
+        Assert.Equal(2, playlist.CurrentPosition);
+    }
+
     [Theory]
     [InlineData(PlaybackOrder.Filename, SortDirection.Ascending)]
     [InlineData(PlaybackOrder.Filename, SortDirection.Descending)]
@@ -281,6 +298,43 @@ public sealed class PlaylistTests
         Assert.Equal(2, playlist.TotalCount);
         Assert.Equal("c.jpg", playlist.Next()!.Path);
         Assert.Equal(2, playlist.CurrentPosition);
+    }
+
+    [Fact]
+    public void Preview_items_follow_playback_history_and_jump_without_reordering_it()
+    {
+        var playlist = new Playlist(
+            [Image("a.jpg"), Image("b.jpg"), Image("c.jpg"), Image("d.jpg")],
+            PlaybackOrder.Filename,
+            includeVideos: true);
+
+        Assert.Equal("a.jpg", playlist.Next()!.Path);
+        Assert.Equal("b.jpg", playlist.Next()!.Path);
+        Assert.Equal("c.jpg", playlist.Next()!.Path);
+
+        Assert.Equal(["b.jpg", "a.jpg"], playlist.PreviewPreviousItems(3).Select(item => item.Path));
+        Assert.Equal(["d.jpg"], playlist.PreviewUpcomingItems(3).Select(item => item.Path));
+
+        Assert.Equal("a.jpg", playlist.JumpTo("A.JPG")!.Path);
+        Assert.Equal("a.jpg", playlist.Current!.Path);
+        Assert.Equal(["b.jpg", "c.jpg", "d.jpg"], playlist.PreviewUpcomingItems(3).Select(item => item.Path));
+        Assert.Equal("b.jpg", playlist.Next()!.Path);
+    }
+
+    [Fact]
+    public void Preview_items_obey_the_active_media_filter()
+    {
+        var playlist = new Playlist(
+            [Image("a.jpg"), Video("b.mp4"), Image("c.jpg")],
+            PlaybackOrder.Filename,
+            MediaFilter.Both);
+        playlist.Next();
+        playlist.Next();
+        playlist.SetOptions(PlaybackOrder.Filename, MediaFilter.Images);
+
+        Assert.Equal(["a.jpg"], playlist.PreviewPreviousItems(3).Select(item => item.Path));
+        Assert.Equal(["c.jpg"], playlist.PreviewUpcomingItems(3).Select(item => item.Path));
+        Assert.Null(playlist.JumpTo("b.mp4"));
     }
 
     [Fact]

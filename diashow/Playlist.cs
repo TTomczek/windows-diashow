@@ -20,6 +20,28 @@ public sealed class Playlist
     public IEnumerable<MediaItem> PreloadCandidates(int count) =>
         new[] { Current }.Concat(_unseen).Where(x => x is not null).Take(Math.Max(0, count) + 1)!;
 
+    public IReadOnlyList<MediaItem> PreviewPreviousItems(int count) =>
+        _history
+            .Take(Math.Max(0, _historyIndex))
+            .Reverse()
+            .Where(item => IsIncluded(item.Kind))
+            .Take(Math.Max(0, count))
+            .ToArray();
+
+    public IReadOnlyList<MediaItem> PreviewUpcomingItems(int count)
+    {
+        var amount = Math.Max(0, count);
+        if (amount == 0)
+            return [];
+
+        return _history
+            .Skip(Math.Max(0, _historyIndex + 1))
+            .Concat(_unseen)
+            .Where(item => IsIncluded(item.Kind))
+            .Take(amount)
+            .ToArray();
+    }
+
     public Playlist(
         IEnumerable<MediaItem> items,
         PlaybackOrder order,
@@ -135,6 +157,37 @@ public sealed class Playlist
     {
         if (!CanGoBack) return Current;
         return _history[--_historyIndex];
+    }
+
+    public MediaItem? JumpTo(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+
+        var historyIndex = _history.FindIndex(item =>
+            IsIncluded(item.Kind) &&
+            string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase));
+        if (historyIndex >= 0)
+        {
+            _historyIndex = historyIndex;
+            return Current;
+        }
+
+        if (!_unseen.Any(item =>
+                IsIncluded(item.Kind) &&
+                string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase)))
+            return null;
+
+        while (_unseen.Count > 0)
+        {
+            var next = Next();
+            if (next is null)
+                return null;
+            if (string.Equals(next.Path, path, StringComparison.OrdinalIgnoreCase))
+                return next;
+        }
+
+        return null;
     }
 
     private List<MediaItem> Filtered() => _all

@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diashow.Installer", "instal
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diashow.Updater", "updater\Diashow.Updater.csproj", "{D1B7E3B5-7F2D-47C3-9E4A-BC9B1E6C4F20}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "diashow.UiTests", "ui-tests\diashow.UiTests.csproj", "{B7E3AF3E-5A6D-4F14-9A71-6A2E1B4D8F30}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,5 +32,9 @@ Global
 		{D1B7E3B5-7F2D-47C3-9E4A-BC9B1E6C4F20}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D1B7E3B5-7F2D-47C3-9E4A-BC9B1E6C4F20}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D1B7E3B5-7F2D-47C3-9E4A-BC9B1E6C4F20}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B7E3AF3E-5A6D-4F14-9A71-6A2E1B4D8F30}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B7E3AF3E-5A6D-4F14-9A71-6A2E1B4D8F30}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B7E3AF3E-5A6D-4F14-9A71-6A2E1B4D8F30}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B7E3AF3E-5A6D-4F14-9A71-6A2E1B4D8F30}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
