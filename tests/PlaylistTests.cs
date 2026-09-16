@@ -201,7 +201,7 @@ public sealed class PlaylistTests
 
         Assert.Equal(items.Length, playlist.TotalCount);
         Assert.True(
-            stopwatch.Elapsed < TimeSpan.FromSeconds(30),
+            stopwatch.Elapsed < TimeSpan.FromSeconds(20),
             $"Adding 100,000 items took {stopwatch.Elapsed}.");
     }
 

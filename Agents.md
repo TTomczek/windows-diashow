@@ -1,6 +1,7 @@
 # Agents.md
 
-This guidance applies to the Windows application and its validation projects:
+This guidance applies to the Windows application, release components, and
+validation projects:
 
 - `diashow/`: WPF application code
 - `tests/`: unit and integration tests
@@ -13,9 +14,11 @@ This guidance applies to the Windows application and its validation projects:
 ### Preserve scalability
 
 - Treat 100,000 media items as a supported workload.
-- Keep scrolling, searching, selection, and rendering responsive at that scale.
-- Prefer progressive loading, batching, virtualization, bounded concurrency, lazy
-  work, and cancellation over loading or processing everything on the UI thread.
+- Keep scrolling, discovery, filtering, selection, and rendering responsive at
+  that scale.
+- Changes MUST prefer progressive loading, batching, virtualization, bounded
+  concurrency, lazy work, and cancellation over loading or processing everything
+  on the UI thread.
 - Keep the existing performance budgets as regression requirements:
   - Adding 100,000 playlist items in batches must remain under 20 seconds.
   - Each 1,000-item playlist ordering variant must remain under 10 seconds.
@@ -24,53 +27,71 @@ This guidance applies to the Windows application and its validation projects:
 
 ### Keep the UI responsive
 
-- Keep file discovery, image decoding, sorting, and other expensive work off the
-  WPF dispatcher.
-- Marshal background results to the UI with the dispatcher and update in batches.
-- Use cancellation tokens and version checks so stale folder loads or transitions
-  cannot update the current view.
-- Bound caches, channels, and parallel work to avoid memory pressure.
-- Preserve graceful behavior for missing, corrupt, or unsupported media.
+- File discovery, image decoding, sorting, and other expensive work MUST stay off
+  the WPF dispatcher.
+- Background results MUST be marshaled to the UI with the dispatcher and updated
+  in batches.
+- Async work MUST use cancellation tokens and version checks so stale folder loads
+  or transitions cannot update the current view.
+- Caches, channels, and parallel work MUST be bounded to avoid memory pressure.
+- File-system watcher events SHOULD be debounced or coalesced before they trigger
+  discovery or UI updates, because one file operation can produce event bursts.
+- Missing, corrupt, or unsupported media MUST fail gracefully.
 
 ### Accessibility
 
-- New controls must support basic keyboard operation and visible keyboard focus.
-- Preserve meaningful automation names and polite live announcements where they
-  already exist.
-- Ensure keyboard users have an actionable alternative to mouse-only behavior.
+- New controls MUST support basic keyboard operation and visible keyboard focus.
+- Changes MUST preserve meaningful automation names and polite live announcements
+  where they already exist.
+- Keyboard users MUST have an actionable alternative to mouse-only behavior.
 
 ### Internationalization
 
-- Route user-facing text through the existing `Localization` service; do not add
+- User-facing text MUST go through the existing `Localization` service; do not add
   hard-coded UI strings.
-- Add translations for every supported language when adding or changing a label,
-  message, tooltip, shortcut description, or accessibility name.
-- Use culture-aware formatting for user-visible values and preserve the English
+- Changes MUST add translations for every supported language when adding or
+  changing a label, message, tooltip, shortcut description, or accessibility name.
+- User-visible values MUST use culture-aware formatting and preserve the English
   fallback behavior.
 
 ### Keyboard shortcuts
 
-- Keep shortcut behavior discoverable in the README and localized UI text.
-- Avoid conflicts with existing shortcuts and ordinary text/input behavior.
-- Test shortcuts and provide an equivalent discoverable UI action where practical.
+- Shortcut behavior MUST remain discoverable in the README and localized UI text.
+- New shortcuts MUST avoid conflicts with existing shortcuts and ordinary
+  text/input behavior.
+- Shortcuts SHOULD be tested and provide an equivalent discoverable UI action where
+  practical.
 - The current shortcuts are documented in `README.md`; update that table and
   `Localization.cs` together when shortcuts change.
 
 ### Testing and regression protection
 
-- Run the smallest relevant existing test project for each change; run both test
-  projects for cross-cutting or user-visible behavior.
-- Every bug fix should add a focused regression test when feasible.
-- Preserve tests for playlist ordering, filtering, navigation, media discovery,
-  cancellation, settings persistence, decoding failures, and scalability budgets.
-- For UI changes, consider Windows UI Automation coverage and inspect screenshots
-  when a UI test fails.
+- Contributors MUST run the smallest relevant existing test project for each
+  change; both test projects MUST be run for cross-cutting or user-visible
+  behavior.
+- Every bug fix MUST add a focused regression test when feasible.
+- Changes MUST preserve tests for playlist ordering, filtering, navigation, media
+  discovery, cancellation, settings persistence, decoding failures, and
+  scalability budgets.
+- UI changes SHOULD add or update Windows UI Automation coverage where practical,
+  and failures SHOULD be investigated using the captured screenshots.
 - Do not weaken a test threshold or remove coverage to make a change pass without
   documenting and reviewing the changed requirement.
 
 When responsiveness, accessibility, internationalization, and feature scope
 compete, evaluate the trade-off explicitly rather than silently dropping one of
 the principles.
+
+## Change checklist
+
+- **UI change:** check keyboard focus, automation names, localization, and UI
+  test coverage.
+- **Playlist or discovery change:** check scalability budgets, cancellation, event
+  bursts, and background-thread behavior.
+- **Bug fix:** add a focused regression test when feasible.
+- **Shortcut change:** update `README.md`, `Localization.cs`, and shortcut tests.
+- **Installer or updater change:** preserve versioning, atomic operations, and
+  update signature and checksum verification.
 
 ## Architecture landmarks
 
