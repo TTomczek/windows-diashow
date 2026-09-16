@@ -4,7 +4,7 @@
         Title="Diashow" Icon="{StaticResource AppIcon}" Width="1100" Height="700" Background="#101014"
         ToolTipService.IsEnabled="False"
         KeyDown="Window_KeyDown" PreviewKeyDown="Window_PreviewKeyDown" MouseMove="Window_MouseMove"
-        Loaded="Window_Loaded" Closing="Window_Closing">
+        Loaded="Window_Loaded" StateChanged="Window_StateChanged" Closing="Window_Closing">
     <Grid x:Name="Root" ClipToBounds="True">
         <Grid.Resources>
             <Style x:Key="IconButton" TargetType="Button">

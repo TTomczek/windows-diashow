@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -45,6 +46,7 @@ public partial class MainWindow : Window
     private string? _requestedPath;
     private string? _rootFolder;
     private bool _paused;
+    private bool _pausedByMinimize;
     private bool _currentVideoAudible;
     private bool _settingsUiReady;
     private string? _emptyMessageKey;
@@ -100,6 +102,23 @@ public partial class MainWindow : Window
             return;
         }
         _ = LoadFolderAsync(input.Value.Folder, input.Value.StartFile);
+    }
+
+    private void Window_StateChanged(object sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            if (!_paused)
+            {
+                _pausedByMinimize = true;
+                TogglePause();
+            }
+        }
+        else if (_pausedByMinimize)
+        {
+            _pausedByMinimize = false;
+            TogglePause();
+        }
     }
 
     private static (string Folder, string? StartFile)? ResolveInput(string? argument)
@@ -729,7 +748,18 @@ public partial class MainWindow : Window
     {
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _settings.ImageDurationSeconds)), token);
+            var remaining = TimeSpan.FromSeconds(Math.Max(1, _settings.ImageDurationSeconds));
+            while (remaining > TimeSpan.Zero)
+            {
+                await _playbackAdvanceGate.WaitUntilResumedAsync(token);
+                var started = Stopwatch.GetTimestamp();
+                var interval = remaining > TimeSpan.FromMilliseconds(50)
+                    ? TimeSpan.FromMilliseconds(50)
+                    : remaining;
+                await Task.Delay(interval, token);
+                remaining -= Stopwatch.GetElapsedTime(started);
+            }
+
             await _playbackAdvanceGate.WaitUntilResumedAsync(token);
             if (!token.IsCancellationRequested) Dispatcher.Invoke(GoNext);
         }

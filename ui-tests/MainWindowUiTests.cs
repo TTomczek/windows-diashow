@@ -1,4 +1,5 @@
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.Core.WindowsAPI;
 
@@ -39,6 +40,20 @@ public sealed class MainWindowUiTests : UiTestBase
             bounds.Y + bounds.Height - 50);
         Keyboard.Press(VirtualKeyShort.SPACE);
 
+        WaitUntil(() => HasName("2 / 2"), TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public void Minimized_slideshow_does_not_advance_until_restored()
+    {
+        WaitUntil(() => HasName("1 / 2"), TimeSpan.FromSeconds(10));
+
+        MainWindow.Patterns.Window.Pattern.SetWindowVisualState(WindowVisualState.Minimized);
+        Thread.Sleep(1500);
+        Assert.True(HasName("1 / 2"));
+
+        MainWindow.Patterns.Window.Pattern.SetWindowVisualState(WindowVisualState.Normal);
+        Assert.True(HasName("1 / 2"));
         WaitUntil(() => HasName("2 / 2"), TimeSpan.FromSeconds(10));
     }
 
