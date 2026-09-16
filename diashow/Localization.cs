@@ -76,7 +76,13 @@ public static class Localization
                 ["CloseSettings"] = "Close settings or exit fullscreen",
                 ["Close"] = "Close",
                 ["ChooseFolderDescription"] = "Choose a folder for the slideshow",
-                ["MediaName"] = "{0}: {1}"
+                ["MediaName"] = "{0}: {1}",
+                ["ToggleQueuePreview"] = "Show or hide queue preview",
+                ["ShowQueuePreview"] = "Show queue preview",
+                ["HideQueuePreview"] = "Hide queue preview",
+                ["PreviousPreview"] = "Previous preview item",
+                ["NextPreview"] = "Next preview item",
+                ["QueuePosition"] = "Queue item {0}: {1}"
             },
             [AppLanguage.German] = new Dictionary<string, string>
             {
@@ -140,7 +146,13 @@ public static class Localization
                 ["CloseSettings"] = "Einstellungen schließen oder Vollbild beenden",
                 ["Close"] = "Schließen",
                 ["ChooseFolderDescription"] = "Ordner für die Diashow auswählen",
-                ["MediaName"] = "{0}: {1}"
+                ["MediaName"] = "{0}: {1}",
+                ["ToggleQueuePreview"] = "Wiedergabevorschau anzeigen oder ausblenden",
+                ["ShowQueuePreview"] = "Wiedergabevorschau anzeigen",
+                ["HideQueuePreview"] = "Wiedergabevorschau ausblenden",
+                ["PreviousPreview"] = "Vorheriges Vorschau-Element",
+                ["NextPreview"] = "Nächstes Vorschau-Element",
+                ["QueuePosition"] = "Wiedergabeelement {0}: {1}"
             },
             [AppLanguage.Spanish] = new Dictionary<string, string>
             {
@@ -204,7 +216,13 @@ public static class Localization
                 ["CloseSettings"] = "Cerrar configuración o salir de pantalla completa",
                 ["Close"] = "Cerrar",
                 ["ChooseFolderDescription"] = "Elige una carpeta para la presentación",
-                ["MediaName"] = "{0}: {1}"
+                ["MediaName"] = "{0}: {1}",
+                ["ToggleQueuePreview"] = "Mostrar u ocultar la vista previa de la cola",
+                ["ShowQueuePreview"] = "Mostrar vista previa de la cola",
+                ["HideQueuePreview"] = "Ocultar vista previa de la cola",
+                ["PreviousPreview"] = "Elemento anterior de la vista previa",
+                ["NextPreview"] = "Siguiente elemento de la vista previa",
+                ["QueuePosition"] = "Elemento {0} de la cola: {1}"
             }
         };
 

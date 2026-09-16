@@ -49,6 +49,21 @@
                 <Setter Property="FontSize" Value="17"/>
                 <Setter Property="Margin" Value="3"/>
             </Style>
+            <Style x:Key="PreviewButton" TargetType="Button">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="Transparent">
+                                <ContentPresenter/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <Style x:Key="OverlayButton" TargetType="Button">
                 <Setter Property="Foreground" Value="White"/>
                 <Setter Property="Background" Value="#33FFFFFF"/>
@@ -223,8 +238,41 @@
             </StackPanel>
         </Button>
 
+        <StackPanel x:Name="QueuePreviewHost" VerticalAlignment="Bottom" Margin="0" Panel.ZIndex="2"
+                    Opacity="0" IsEnabled="False">
+            <Button x:Name="QueueToggleButton" Style="{StaticResource CompactIconButton}"
+                    Content="&#xE70D;" FontFamily="Segoe MDL2 Assets"
+                    ToolTip="Hide queue preview" AutomationProperties.Name="Hide queue preview"
+                    HorizontalAlignment="Center" Click="QueueToggle_Click"/>
+            <Border x:Name="QueuePreviewPanel" Background="#CC17171C" Padding="10,8"
+                    Visibility="Collapsed" SizeChanged="QueuePreviewPanel_SizeChanged">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="QueuePreviousButton" Grid.Column="0"
+                            Style="{StaticResource CompactIconButton}" Content="&#xE100;"
+                            ToolTip="Previous preview item" AutomationProperties.Name="Previous preview item"
+                            Click="QueuePrevious_Click"/>
+                    <ScrollViewer x:Name="QueuePreviewScroller" Grid.Column="1"
+                                  HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
+                                  HorizontalAlignment="Center" Focusable="False">
+                        <StackPanel x:Name="QueuePreviewItems" Orientation="Horizontal"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </ScrollViewer>
+                    <Button x:Name="QueueNextButton" Grid.Column="2"
+                            Style="{StaticResource CompactIconButton}" Content="&#xE101;"
+                            ToolTip="Next preview item" AutomationProperties.Name="Next preview item"
+                            Click="QueueNext_Click"/>
+                </Grid>
+            </Border>
+        </StackPanel>
+
         <Border x:Name="Controls" Background="#CC17171C" Padding="14"
-                VerticalAlignment="Bottom" Opacity="0">
+                VerticalAlignment="Bottom" Opacity="0" IsEnabled="False"
+                SizeChanged="Controls_SizeChanged">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -269,7 +317,7 @@
         <Border x:Name="SettingsPanel" Background="#F01D1D24" Padding="24"
                 Width="360" HorizontalAlignment="Right" VerticalAlignment="Top"
                 MaxHeight="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=ActualHeight}"
-                Visibility="Collapsed">
+                Visibility="Collapsed" Panel.ZIndex="3">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                           CanContentScroll="False" Padding="0,0,10,0">
                 <StackPanel>
