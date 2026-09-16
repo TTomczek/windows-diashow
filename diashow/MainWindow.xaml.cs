@@ -502,6 +502,7 @@ public partial class MainWindow : Window
         var cancellationToken = _previewThumbnailCancellation.Token;
         QueuePreviewItems.Children.Clear();
         var generation = ++_previewGeneration;
+        UpdateQueueToggleButton();
         if (!_settings.QueuePreviewVisible)
         {
             QueuePreviewPanel.Visibility = Visibility.Collapsed;
@@ -1045,9 +1046,14 @@ public partial class MainWindow : Window
         MuteShortcut.Text = Localization.Get("MuteVideo");
         CloseShortcut.Text = Localization.Get("CloseSettings");
         RevealShortcut.Text = Localization.Get("RevealCurrent");
+        QueuePreviewShortcut.Text = Localization.Get("ToggleQueuePreview");
         AccessToastDismissHint.Text = Localization.Get("PressToDismiss");
         AccessToast.SetValue(AutomationProperties.NameProperty, Localization.Get("DismissFileError"));
         VideoProgress.ToolTip = Localization.Get("VideoPosition");
+        QueuePreviousButton.ToolTip = Localization.Get("PreviousPreview");
+        AutomationProperties.SetName(QueuePreviousButton, Localization.Get("PreviousPreview"));
+        QueueNextButton.ToolTip = Localization.Get("NextPreview");
+        AutomationProperties.SetName(QueueNextButton, Localization.Get("NextPreview"));
         SetButtonIcon(PreviousButton, "\uE100", Localization.Get("PreviousItem"));
         SetButtonIcon(NextButton, "\uE101", Localization.Get("NextItem"));
         SetButtonIcon(RevealButton, "\uE8B7", Localization.Get("Reveal"));
@@ -1056,6 +1062,7 @@ public partial class MainWindow : Window
             Localization.Get(_currentVideoAudible ? "Mute" : "Unmute"));
         SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769",
             Localization.Get(_paused ? "Resume" : "Pause"));
+        UpdateQueueToggleButton();
         if (_emptyMessageKey is not null)
             EmptyMessage.Text = Localization.Get(_emptyMessageKey);
         LanguageBox.SelectedIndex = Localization.Current switch
@@ -1179,7 +1186,7 @@ public partial class MainWindow : Window
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.OriginalSource is Button && e.Key is not (Key.Left or Key.Right))
+        if (e.OriginalSource is Button && e.Key is not (Key.Left or Key.Right or Key.Q))
             return;
         switch (e.Key)
         {
@@ -1190,6 +1197,7 @@ public partial class MainWindow : Window
             case Key.V: ToggleMediaFilter(); break;
             case Key.M: ToggleAudio(); break;
             case Key.E: RevealCurrentInExplorer(); break;
+            case Key.Q: ToggleQueuePreview(); break;
             case Key.Escape:
                 if (SettingsPanel.Visibility == Visibility.Visible) SettingsPanel.Visibility = Visibility.Collapsed;
                 else if (WindowStyle == WindowStyle.None) SetFullscreen(false);
@@ -1346,6 +1354,15 @@ public partial class MainWindow : Window
         UpdateQueuePreview();
         if (_settings.QueuePreviewVisible)
             ShowControls();
+    }
+
+    private void UpdateQueueToggleButton()
+    {
+        var isVisible = _settings.QueuePreviewVisible;
+        SetButtonIcon(
+            QueueToggleButton,
+            isVisible ? "\uE70E" : "\uE70D",
+            Localization.Get(isVisible ? "HideQueuePreview" : "ShowQueuePreview"));
     }
 
     private static void SetButtonIcon(Button button, string glyph, string tooltip)
