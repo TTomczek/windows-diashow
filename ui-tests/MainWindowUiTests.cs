@@ -1,3 +1,6 @@
+using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Input;
+
 namespace diashow.UiTests;
 
 public sealed class MainWindowUiTests : UiTestBase
@@ -21,13 +24,18 @@ public sealed class MainWindowUiTests : UiTestBase
         WaitUntil(() => HasName("1 / 2"), TimeSpan.FromSeconds(10));
 
         var bounds = MainWindow.BoundingRectangle;
-        FlaUI.Core.Input.Mouse.MoveTo(
+        Mouse.MoveTo(
             bounds.X + bounds.Width / 2,
             bounds.Y + bounds.Height - 50);
         WaitUntil(() => HasName("Pause"), TimeSpan.FromSeconds(2));
         ClickButton("Pause");
         ClickButton("Reveal in explorer");
         Thread.Sleep(1500);
+        MainWindow.SetForeground();
+        MainWindow.Focus();
+        Mouse.MoveTo(
+            bounds.X + bounds.Width / 2,
+            bounds.Y + bounds.Height - 50);
         ClickButton("Resume");
 
         WaitUntil(() => HasName("2 / 2"), TimeSpan.FromSeconds(10));
@@ -38,9 +46,14 @@ public sealed class MainWindowUiTests : UiTestBase
 
     private void ClickButton(string name)
     {
-        var button = MainWindow.FindFirstDescendant(cf => cf.ByName(name))
-            ?? throw new InvalidOperationException($"The '{name}' button was not found.");
-        button.Patterns.Invoke.Pattern.Invoke();
+        AutomationElement? button = null;
+        WaitUntil(() =>
+        {
+            button = MainWindow.FindFirstDescendant(cf => cf.ByName(name));
+            return button?.IsEnabled == true;
+        }, TimeSpan.FromSeconds(2));
+        (button ?? throw new InvalidOperationException($"The '{name}' button was not found."))
+            .Patterns.Invoke.Pattern.Invoke();
     }
 
     private static (string Path, Action Cleanup) CreateTestData()
