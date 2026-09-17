@@ -317,7 +317,7 @@
                     <Button x:Name="NextButton" Style="{StaticResource IconButton}" Content="&#xE101;" FontFamily="Segoe MDL2 Assets" ToolTip="Next"
                             AutomationProperties.Name="Next item"
                             Click="Next_Click"/>
-                    <Button x:Name="AudioButton" Style="{StaticResource IconButton}" Content="&#xE767;" FontFamily="Segoe MDL2 Assets"
+                    <Button x:Name="AudioButton" Style="{StaticResource IconButton}" Content="&#xE74F;" FontFamily="Segoe MDL2 Assets"
                             ToolTip="Unmute" AutomationProperties.Name="Unmute" Click="Audio_Click"/>
                     <Button x:Name="RevealButton" Style="{StaticResource IconButton}" Content="&#xE8B7;" FontFamily="Segoe MDL2 Assets"
                             ToolTip="Reveal in explorer" AutomationProperties.Name="Reveal current file in Explorer"

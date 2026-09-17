@@ -303,7 +303,7 @@ public partial class MainWindow : Window
         SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769",
             Localization.Get(_paused ? "Resume" : "Pause"));
         _currentVideoAudible = false;
-        SetButtonIcon(AudioButton, "\uE767", Localization.Get("Unmute"));
+        SetButtonIcon(AudioButton, "\uE74F", Localization.Get("Unmute"));
         var relativePath = _rootFolder is null ? item.Path : Path.GetRelativePath(_rootFolder, item.Path);
         PathBanner.Text = relativePath.Replace('\\', '/').Replace("/", " / ");
         var mediaName = Localization.Get("MediaName",
@@ -1113,7 +1113,7 @@ public partial class MainWindow : Window
         SetButtonIcon(NextButton, "\uE101", Localization.Get("NextItem"));
         SetButtonIcon(RevealButton, "\uE8B7", Localization.Get("Reveal"));
         UpdateFullscreenButton(WindowStyle == WindowStyle.None);
-        SetButtonIcon(AudioButton, _currentVideoAudible ? "\uE74F" : "\uE767",
+        SetButtonIcon(AudioButton, _currentVideoAudible ? "\uE767" : "\uE74F",
             Localization.Get(_currentVideoAudible ? "Mute" : "Unmute"));
         SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769",
             Localization.Get(_paused ? "Resume" : "Pause"));
@@ -1600,7 +1600,7 @@ public partial class MainWindow : Window
         if (VideoView.Visibility != Visibility.Visible) return;
         _currentVideoAudible = !_currentVideoAudible;
         VideoView.Volume = _currentVideoAudible ? 1 : 0;
-        SetButtonIcon(AudioButton, _currentVideoAudible ? "\uE74F" : "\uE767",
+        SetButtonIcon(AudioButton, _currentVideoAudible ? "\uE767" : "\uE74F",
             Localization.Get(_currentVideoAudible ? "Mute" : "Unmute"));
     }
 
