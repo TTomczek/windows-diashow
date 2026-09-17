@@ -97,6 +97,7 @@ the principles.
 
 - `MediaDiscovery.cs` streams discovered media through a bounded channel.
 - `ImagePreloader.cs` owns bounded concurrent decoding and the image LRU cache.
+- `VideoFrameExtractor.cs` extracts timestamped video frames off the UI thread.
 - `Playlist.cs` owns playback ordering, filtering, navigation, and preload
   candidates.
 - `MainWindow.xaml.cs` coordinates UI state, dispatcher updates, cancellation,

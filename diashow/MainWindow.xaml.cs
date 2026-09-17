@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private readonly ImagePreloader _imagePreloader = new();
     private readonly DispatcherTimer _controlsTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _videoProgressTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private readonly DispatcherTimer _videoPreviewTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly DispatcherTimer _previewRefreshTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private readonly UpdateManager? _updateManager;
     private Playlist? _playlist;
@@ -60,6 +61,11 @@ public partial class MainWindow : Window
     private int _transitionVersion;
     private int _previewGeneration;
     private CancellationTokenSource? _previewThumbnailCancellation;
+    private CancellationTokenSource? _videoPreviewCancellation;
+    private string? _videoPreviewPath;
+    private Point _videoPreviewPointer;
+    private double _videoPreviewSeconds;
+    private int _videoPreviewGeneration;
     private readonly List<(Animatable Target, DependencyProperty Property, AnimationClock Clock)>
         _kenBurnsAnimations = [];
     private readonly Dictionary<string, BitmapSource> _previewThumbnails =
@@ -72,6 +78,13 @@ public partial class MainWindow : Window
         _requestedPath = args.FirstOrDefault();
         _controlsTimer.Tick += (_, _) =>
         {
+            if (VideoPreviewPopup.Visibility == Visibility.Visible &&
+                (VideoProgress.IsMouseOver || VideoProgress.IsKeyboardFocusWithin))
+            {
+                _controlsTimer.Start();
+                return;
+            }
+
             Controls.Opacity = 0;
             Controls.IsEnabled = false;
             QueuePreviewHost.Opacity = 0;
@@ -79,6 +92,11 @@ public partial class MainWindow : Window
             Cursor = Cursors.None;
         };
         _videoProgressTimer.Tick += (_, _) => UpdateVideoProgress();
+        _videoPreviewTimer.Tick += async (_, _) =>
+        {
+            _videoPreviewTimer.Stop();
+            await GenerateVideoPreviewAsync();
+        };
         _previewRefreshTimer.Tick += (_, _) =>
         {
             _previewRefreshTimer.Stop();
@@ -1080,6 +1098,7 @@ public partial class MainWindow : Window
         AccessToastDismissHint.Text = Localization.Get("PressToDismiss");
         AccessToast.SetValue(AutomationProperties.NameProperty, Localization.Get("DismissFileError"));
         VideoProgress.ToolTip = Localization.Get("VideoPosition");
+        AutomationProperties.SetName(VideoPreviewPopup, Localization.Get("VideoPreview"));
         QueuePreviousButton.ToolTip = Localization.Get("PreviousPreview");
         AutomationProperties.SetName(QueuePreviousButton, Localization.Get("PreviousPreview"));
         QueueNextButton.ToolTip = Localization.Get("NextPreview");
@@ -1313,7 +1332,151 @@ public partial class MainWindow : Window
 
         var offset = e.Key == Key.Right ? 10 : -10;
         VideoProgress.Value = Math.Clamp(VideoProgress.Value + offset, 0, VideoProgress.Maximum);
+        RequestVideoPreview(VideoProgress.ActualWidth * GetVideoProgressRatio());
         e.Handled = true;
+    }
+
+    private void VideoProgress_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!VideoProgress.IsMouseOver)
+            return;
+
+        var position = e.GetPosition(VideoProgress);
+        RequestVideoPreview(position.X);
+        ShowControls();
+    }
+
+    private void VideoProgress_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (!VideoProgress.IsKeyboardFocusWithin)
+            HideVideoPreview();
+    }
+
+    private void VideoProgress_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        RequestVideoPreview(VideoProgress.ActualWidth * GetVideoProgressRatio());
+    }
+
+    private void VideoProgress_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (!VideoProgress.IsMouseOver)
+            HideVideoPreview();
+    }
+
+    private double GetVideoProgressRatio() =>
+        VideoProgress.Maximum <= VideoProgress.Minimum
+            ? 0
+            : Math.Clamp((VideoProgress.Value - VideoProgress.Minimum) /
+                (VideoProgress.Maximum - VideoProgress.Minimum), 0, 1);
+
+    private void RequestVideoPreview(double pointerX)
+    {
+        if (VideoProgress.Visibility != Visibility.Visible ||
+            VideoView.Visibility != Visibility.Visible ||
+            VideoView.Source is not { } source ||
+            !VideoView.NaturalDuration.HasTimeSpan ||
+            VideoProgress.ActualWidth <= 0)
+        {
+            HideVideoPreview();
+            return;
+        }
+
+        _videoPreviewPointer = new Point(Math.Clamp(pointerX, 0, VideoProgress.ActualWidth), 0);
+        _videoPreviewSeconds = Math.Clamp(
+            VideoProgress.Minimum +
+            _videoPreviewPointer.X / VideoProgress.ActualWidth *
+            (VideoProgress.Maximum - VideoProgress.Minimum),
+            0, VideoProgress.Maximum);
+
+        var path = source.LocalPath;
+        if (!string.Equals(_videoPreviewPath, path, StringComparison.OrdinalIgnoreCase))
+        {
+            _videoPreviewPath = path;
+            VideoPreviewImage.Source = null;
+            VideoPreviewImage.Visibility = Visibility.Collapsed;
+        }
+
+        VideoPreviewTimestamp.Text = FormatVideoTimestamp(_videoPreviewSeconds,
+            VideoView.NaturalDuration.TimeSpan);
+        VideoPreviewStatus.Text = Localization.Get("VideoPreviewLoading");
+        VideoPreviewPopup.Visibility = Visibility.Visible;
+        PositionVideoPreview();
+        _videoPreviewTimer.Stop();
+        _videoPreviewTimer.Start();
+    }
+
+    private void PositionVideoPreview()
+    {
+        if (VideoPreviewPopup.Visibility != Visibility.Visible)
+            return;
+
+        VideoPreviewPopup.UpdateLayout();
+        var sliderOrigin = VideoProgress.TranslatePoint(new Point(0, 0), VideoPreviewOverlay);
+        var width = VideoPreviewPopup.ActualWidth;
+        var x = sliderOrigin.X + _videoPreviewPointer.X - width / 2;
+        var maxX = Math.Max(0, VideoPreviewOverlay.ActualWidth - width);
+        Canvas.SetLeft(VideoPreviewPopup, Math.Clamp(x, 0, maxX));
+
+        var y = sliderOrigin.Y - VideoPreviewPopup.ActualHeight - 8;
+        if (y < 0)
+            y = sliderOrigin.Y + VideoProgress.ActualHeight + 8;
+        Canvas.SetTop(VideoPreviewPopup, y);
+    }
+
+    private async Task GenerateVideoPreviewAsync()
+    {
+        if (_videoPreviewPath is null)
+            return;
+
+        var path = _videoPreviewPath;
+        var seconds = _videoPreviewSeconds;
+        var generation = ++_videoPreviewGeneration;
+        _videoPreviewCancellation?.Cancel();
+        _videoPreviewCancellation?.Dispose();
+        _videoPreviewCancellation = new CancellationTokenSource();
+        var token = _videoPreviewCancellation.Token;
+
+        try
+        {
+            var frame = await Task.Run(
+                () => VideoFrameExtractor.Extract(path, seconds, token), token);
+            if (frame is null || generation != _videoPreviewGeneration)
+            {
+                if (generation == _videoPreviewGeneration)
+                    VideoPreviewStatus.Text = Localization.Get("VideoPreviewUnavailable");
+                return;
+            }
+
+            VideoPreviewImage.Source = frame;
+            VideoPreviewImage.Visibility = Visibility.Visible;
+            VideoPreviewStatus.Text = string.Empty;
+            PositionVideoPreview();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or NotSupportedException or ArgumentException or InvalidOperationException)
+        {
+            if (generation == _videoPreviewGeneration)
+                VideoPreviewStatus.Text = Localization.Get("VideoPreviewUnavailable");
+        }
+    }
+
+    private static string FormatVideoTimestamp(double seconds, TimeSpan duration)
+    {
+        var position = TimeSpan.FromSeconds(Math.Max(0, seconds));
+        return duration.TotalHours >= 1
+            ? $"{(int)position.TotalHours:00}:{position.Minutes:00}:{position.Seconds:00} / " +
+              $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}"
+            : $"{position:mm\\:ss} / {duration:mm\\:ss}";
+    }
+
+    private void HideVideoPreview()
+    {
+        _videoPreviewTimer.Stop();
+        _videoPreviewCancellation?.Cancel();
+        VideoPreviewPopup.Visibility = Visibility.Collapsed;
     }
 
     private void UpdateVideoProgress()
@@ -1338,6 +1501,7 @@ public partial class MainWindow : Window
     private void StopVideoProgress()
     {
         _videoProgressTimer.Stop();
+        HideVideoPreview();
         VideoProgress.Visibility = Visibility.Collapsed;
         VideoProgress.Value = 0;
         VideoProgress.Maximum = 1;
@@ -1486,7 +1650,9 @@ public partial class MainWindow : Window
         _playbackCancellation?.Cancel();
         _scanCancellation?.Cancel();
         _previewRefreshTimer.Stop();
+        _videoPreviewTimer.Stop();
         _previewThumbnailCancellation?.Cancel();
+        _videoPreviewCancellation?.Cancel();
         _folderMonitor?.Dispose();
         _folderMonitor = null;
         StopGif();
@@ -1495,6 +1661,8 @@ public partial class MainWindow : Window
         _imagePreloader.Dispose();
         _previewThumbnailCancellation?.Dispose();
         _previewThumbnailCancellation = null;
+        _videoPreviewCancellation?.Dispose();
+        _videoPreviewCancellation = null;
         _settings.Save();
     }
 }

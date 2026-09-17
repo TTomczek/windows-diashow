@@ -201,6 +201,22 @@
                       AutomationProperties.LiveSetting="Polite"
                       MediaOpened="VideoView_MediaOpened"
                       MediaEnded="VideoView_MediaEnded" MediaFailed="VideoView_MediaFailed"/>
+        <Canvas x:Name="VideoPreviewOverlay" IsHitTestVisible="False" Panel.ZIndex="4">
+            <Border x:Name="VideoPreviewPopup" Width="400" MaxHeight="300"
+                    Background="#F01D1D24" BorderBrush="#66FFFFFF" BorderThickness="1"
+                    CornerRadius="6" Padding="8" Visibility="Collapsed">
+                <StackPanel>
+                    <Image x:Name="VideoPreviewImage" Width="384" Height="216"
+                           Stretch="Uniform" Visibility="Collapsed"/>
+                    <TextBlock x:Name="VideoPreviewTimestamp" Foreground="White"
+                               FontSize="13" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,5,0,0"/>
+                    <TextBlock x:Name="VideoPreviewStatus" Foreground="#DDFFFFFF"
+                               FontSize="11" HorizontalAlignment="Center"
+                               Margin="0,3,0,0"/>
+                </StackPanel>
+            </Border>
+        </Canvas>
         <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center"
                     Visibility="Collapsed">
             <TextBlock x:Name="EmptyMessage" Foreground="White" FontSize="24"
@@ -287,7 +303,11 @@
                         ToolTip="Video position"
                         ValueChanged="VideoProgress_ValueChanged"
                         PreviewMouseLeftButtonDown="VideoProgress_PreviewMouseLeftButtonDown"
-                        PreviewKeyDown="VideoProgress_PreviewKeyDown"/>
+                        PreviewKeyDown="VideoProgress_PreviewKeyDown"
+                        MouseMove="VideoProgress_MouseMove"
+                        MouseLeave="VideoProgress_MouseLeave"
+                        GotKeyboardFocus="VideoProgress_GotKeyboardFocus"
+                        LostKeyboardFocus="VideoProgress_LostKeyboardFocus"/>
                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
                     <Button x:Name="PreviousButton" Style="{StaticResource IconButton}" Content="&#xE100;" FontFamily="Segoe MDL2 Assets" ToolTip="Previous"
                             AutomationProperties.Name="Previous item"
