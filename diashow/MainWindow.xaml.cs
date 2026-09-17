@@ -32,8 +32,11 @@ public partial class MainWindow : Window
     private const double PreviewItemHeight = 64;
     private const double PreviewSelectedWidth = 128;
     private const double PreviewSelectedHeight = 80;
+    private const double VideoPreviewBucketSeconds = 1;
+    private const int VideoPreviewCacheLimit = 32;
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly ImagePreloader _imagePreloader = new();
+    private readonly VideoFrameExtractor _videoFrameExtractor = new();
     private readonly DispatcherTimer _controlsTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _videoProgressTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly DispatcherTimer _videoPreviewTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
@@ -62,10 +65,13 @@ public partial class MainWindow : Window
     private int _previewGeneration;
     private CancellationTokenSource? _previewThumbnailCancellation;
     private CancellationTokenSource? _videoPreviewCancellation;
+    private CancellationTokenSource? _videoPreviewPrefetchCancellation;
     private string? _videoPreviewPath;
     private Point _videoPreviewPointer;
     private double _videoPreviewSeconds;
+    private int _videoPreviewBucket = -1;
     private int _videoPreviewGeneration;
+    private readonly Dictionary<int, BitmapSource> _videoPreviewFrames = [];
     private readonly List<(Animatable Target, DependencyProperty Property, AnimationClock Clock)>
         _kenBurnsAnimations = [];
     private readonly Dictionary<string, BitmapSource> _previewThumbnails =
@@ -1381,26 +1387,55 @@ public partial class MainWindow : Window
             return;
         }
 
-        _videoPreviewPointer = new Point(Math.Clamp(pointerX, 0, VideoProgress.ActualWidth), 0);
-        _videoPreviewSeconds = Math.Clamp(
+        var nextPointer = Math.Clamp(pointerX, 0, VideoProgress.ActualWidth);
+        var nextSeconds = Math.Clamp(
             VideoProgress.Minimum +
-            _videoPreviewPointer.X / VideoProgress.ActualWidth *
+            nextPointer / VideoProgress.ActualWidth *
             (VideoProgress.Maximum - VideoProgress.Minimum),
             0, VideoProgress.Maximum);
 
         var path = source.LocalPath;
+        var bucket = VideoPreviewMath.GetBucket(
+            nextSeconds, VideoPreviewBucketSeconds, VideoView.NaturalDuration.TimeSpan);
+        if (VideoPreviewPopup.Visibility == Visibility.Visible &&
+            string.Equals(_videoPreviewPath, path, StringComparison.OrdinalIgnoreCase) &&
+            Math.Abs(nextPointer - _videoPreviewPointer.X) < 0.5 &&
+            Math.Abs(nextSeconds - _videoPreviewSeconds) < 0.01)
+            return;
+
+        _videoPreviewPointer = new Point(nextPointer, 0);
+        _videoPreviewSeconds = nextSeconds;
         if (!string.Equals(_videoPreviewPath, path, StringComparison.OrdinalIgnoreCase))
         {
+            _videoPreviewPrefetchCancellation?.Cancel();
+            _videoPreviewPrefetchCancellation?.Dispose();
+            _videoPreviewPrefetchCancellation = null;
             _videoPreviewPath = path;
+            _videoPreviewBucket = -1;
+            _videoPreviewFrames.Clear();
             VideoPreviewImage.Source = null;
             VideoPreviewImage.Visibility = Visibility.Collapsed;
         }
 
-        VideoPreviewTimestamp.Text = FormatVideoTimestamp(_videoPreviewSeconds,
-            VideoView.NaturalDuration.TimeSpan);
+        VideoPreviewTimestamp.Text = VideoPreviewMath.FormatTimestamp(
+            _videoPreviewSeconds, VideoView.NaturalDuration.TimeSpan);
         VideoPreviewStatus.Text = Localization.Get("VideoPreviewLoading");
         VideoPreviewPopup.Visibility = Visibility.Visible;
         PositionVideoPreview();
+        if (_videoPreviewBucket == bucket)
+        {
+            if (_videoPreviewFrames.TryGetValue(bucket, out var cachedFrame))
+            {
+                VideoPreviewImage.Source = cachedFrame;
+                VideoPreviewImage.Visibility = Visibility.Visible;
+                VideoPreviewStatus.Text = string.Empty;
+            }
+            PositionVideoPreview();
+            return;
+        }
+
+        _videoPreviewPrefetchCancellation?.Cancel();
+        _videoPreviewBucket = bucket;
         _videoPreviewTimer.Stop();
         _videoPreviewTimer.Start();
     }
@@ -1429,7 +1464,8 @@ public partial class MainWindow : Window
             return;
 
         var path = _videoPreviewPath;
-        var seconds = _videoPreviewSeconds;
+        var bucket = _videoPreviewBucket;
+        var seconds = bucket * VideoPreviewBucketSeconds;
         var generation = ++_videoPreviewGeneration;
         _videoPreviewCancellation?.Cancel();
         _videoPreviewCancellation?.Dispose();
@@ -1439,7 +1475,7 @@ public partial class MainWindow : Window
         try
         {
             var frame = await Task.Run(
-                () => VideoFrameExtractor.Extract(path, seconds, token), token);
+                () => _videoFrameExtractor.Extract(path, seconds, token), token);
             if (frame is null || generation != _videoPreviewGeneration)
             {
                 if (generation == _videoPreviewGeneration)
@@ -1451,7 +1487,10 @@ public partial class MainWindow : Window
             VideoPreviewImage.Visibility = Visibility.Visible;
             VideoPreviewStatus.Text = string.Empty;
             PositionVideoPreview();
+            CacheVideoPreviewFrame(bucket, frame);
+            StartVideoPreviewPrefetch(path, bucket, VideoView.NaturalDuration.TimeSpan);
         }
+
         catch (OperationCanceledException)
         {
         }
@@ -1463,19 +1502,50 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string FormatVideoTimestamp(double seconds, TimeSpan duration)
+    private void CacheVideoPreviewFrame(int bucket, BitmapSource frame)
     {
-        var position = TimeSpan.FromSeconds(Math.Max(0, seconds));
-        return duration.TotalHours >= 1
-            ? $"{(int)position.TotalHours:00}:{position.Minutes:00}:{position.Seconds:00} / " +
-              $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}"
-            : $"{position:mm\\:ss} / {duration:mm\\:ss}";
+        _videoPreviewFrames[bucket] = frame;
+        while (_videoPreviewFrames.Count > VideoPreviewCacheLimit)
+            _videoPreviewFrames.Remove(_videoPreviewFrames.Keys.First());
+    }
+
+    private void StartVideoPreviewPrefetch(string path, int centerBucket, TimeSpan duration)
+    {
+        _videoPreviewPrefetchCancellation?.Cancel();
+        _videoPreviewPrefetchCancellation?.Dispose();
+        _videoPreviewPrefetchCancellation = new CancellationTokenSource();
+        _ = PrefetchVideoPreviewAsync(
+            path, centerBucket, duration, _videoPreviewPrefetchCancellation.Token);
+    }
+
+    private async Task PrefetchVideoPreviewAsync(
+        string path, int centerBucket, TimeSpan duration, CancellationToken token)
+    {
+        var maxBucket = (int)Math.Ceiling(duration.TotalSeconds / VideoPreviewBucketSeconds);
+        foreach (var bucket in Enumerable.Range(-2, 5)
+                     .Select(offset => centerBucket + offset)
+                     .Where(candidate => candidate >= 0 && candidate <= maxBucket)
+                     .Distinct())
+        {
+            if (token.IsCancellationRequested || _videoPreviewFrames.ContainsKey(bucket))
+                continue;
+
+            var frame = await Task.Run(
+                () => _videoFrameExtractor.Extract(
+                    path, bucket * VideoPreviewBucketSeconds, token), token);
+            if (frame is null || token.IsCancellationRequested ||
+                !string.Equals(_videoPreviewPath, path, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            CacheVideoPreviewFrame(bucket, frame);
+        }
     }
 
     private void HideVideoPreview()
     {
         _videoPreviewTimer.Stop();
         _videoPreviewCancellation?.Cancel();
+        _videoPreviewPrefetchCancellation?.Cancel();
         VideoPreviewPopup.Visibility = Visibility.Collapsed;
     }
 
@@ -1653,16 +1723,20 @@ public partial class MainWindow : Window
         _videoPreviewTimer.Stop();
         _previewThumbnailCancellation?.Cancel();
         _videoPreviewCancellation?.Cancel();
+        _videoPreviewPrefetchCancellation?.Cancel();
         _folderMonitor?.Dispose();
         _folderMonitor = null;
         StopGif();
         StopVideoProgress();
         VideoView.Stop();
         _imagePreloader.Dispose();
+        _videoFrameExtractor.Dispose();
         _previewThumbnailCancellation?.Dispose();
         _previewThumbnailCancellation = null;
         _videoPreviewCancellation?.Dispose();
         _videoPreviewCancellation = null;
+        _videoPreviewPrefetchCancellation?.Dispose();
+        _videoPreviewPrefetchCancellation = null;
         _settings.Save();
     }
 }
