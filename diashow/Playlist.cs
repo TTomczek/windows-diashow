@@ -6,6 +6,7 @@ public sealed class Playlist
     private readonly Random _random = new();
     private List<MediaItem> _unseen = [];
     private readonly List<MediaItem> _history = [];
+    private List<MediaItem> _orderedAll = [];
     private int _historyIndex = -1;
     private PlaybackOrder _order;
     private SortDirection _direction;
@@ -60,7 +61,7 @@ public sealed class Playlist
         _order = order;
         _direction = direction;
         _mediaFilter = mediaFilter;
-        RebuildUnseen();
+        RebuildUnseen(reorderFolder: true);
     }
 
     public Playlist(
@@ -77,7 +78,7 @@ public sealed class Playlist
         var existing = _all.Select(static item => item.Path)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         _all.AddRange(items.Where(item => existing.Add(item.Path)));
-        RebuildUnseen();
+        RebuildUnseen(reorderFolder: true);
     }
 
     public bool RemoveItems(IEnumerable<string> paths)
@@ -93,7 +94,7 @@ public sealed class Playlist
         _all.RemoveAll(item => removed.Contains(item.Path));
         _history.RemoveAll(item => removed.Contains(item.Path));
         _historyIndex = Math.Min(_historyIndex - removedThroughCurrent, _history.Count - 1);
-        RebuildUnseen();
+        RebuildUnseen(reorderFolder: true);
         return currentPath is not null && removed.Contains(currentPath);
     }
 
@@ -105,7 +106,7 @@ public sealed class Playlist
         _order = order;
         _direction = direction;
         _mediaFilter = mediaFilter;
-        RebuildUnseen();
+        RebuildUnseen(reorderFolder: true);
     }
 
     public void SetActivePlaylist(
@@ -114,7 +115,12 @@ public sealed class Playlist
         bool resetHistory = true,
         bool scanComplete = true)
     {
-        _scopePaths = paths?.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _scopePaths = paths switch
+        {
+            null => null,
+            HashSet<string> set when ReferenceEquals(set.Comparer, StringComparer.OrdinalIgnoreCase) => set,
+            _ => paths.ToHashSet(StringComparer.OrdinalIgnoreCase)
+        };
         _endMode = endMode;
         _scopeComplete = scanComplete;
         if (resetHistory)
@@ -187,7 +193,7 @@ public sealed class Playlist
                 !_appendRemainderStarted)
             {
                 _appendRemainderStarted = true;
-                RebuildUnseen();
+                RebuildUnseen(reorderFiltered: true);
             }
             else if (_scopePaths is not null && _appendRemainderStarted)
             {
@@ -195,13 +201,13 @@ public sealed class Playlist
                 _appendRemainderStarted = false;
                 _history.Clear();
                 _historyIndex = -1;
-                RebuildUnseen();
+                RebuildUnseen(reorderFolder: true);
             }
             else if (_scopePaths is not null)
             {
                 _history.Clear();
                 _historyIndex = -1;
-                RebuildUnseen();
+                RebuildUnseen(reorderFiltered: true);
             }
         }
 
@@ -211,7 +217,7 @@ public sealed class Playlist
             if (loop.Count == 0) return null;
             _history.Clear();
             _historyIndex = -1;
-            _unseen = Order(loop);
+            RebuildUnseen(reorderFiltered: true);
         }
 
         var next = _unseen[0];
@@ -238,7 +244,7 @@ public sealed class Playlist
             return null;
 
         var historyIndex = _history.FindIndex(item =>
-            IsIncluded(item.Kind) &&
+            IsVisibleInActivePlaylist(item) &&
             string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase));
         if (historyIndex >= 0)
         {
@@ -247,7 +253,7 @@ public sealed class Playlist
         }
 
         if (!_unseen.Any(item =>
-                IsIncluded(item.Kind) &&
+                IsVisibleInActivePlaylist(item) &&
                 string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase)))
             return null;
 
@@ -289,11 +295,16 @@ public sealed class Playlist
             _ => true
         };
 
-    private void RebuildUnseen()
+    private void RebuildUnseen(bool reorderFolder = false, bool reorderFiltered = false)
     {
+        if (reorderFolder)
+            _orderedAll = Order(_all);
         var seen = _history.Take(Math.Max(0, _historyIndex + 1))
             .Select(x => x.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        _unseen = Order(Filtered().Where(x => !seen.Contains(x.Path)));
+        var ordered = reorderFiltered
+            ? Order(Filtered())
+            : _orderedAll.Where(item => IsIncluded(item.Kind) && IsInActiveScope(item)).ToList();
+        _unseen = ordered.Where(item => !seen.Contains(item.Path)).ToList();
     }
 
     private List<MediaItem> Order(IEnumerable<MediaItem> source)

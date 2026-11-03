@@ -41,6 +41,8 @@ public abstract class UiTestBase : IDisposable
         startInfo.Environment["APPDATA"] = _settingsDirectory;
         startInfo.Environment["DIASHOW_SETTINGS_PATH"] =
             Path.Combine(_settingsDirectory, "settings.json");
+        startInfo.Environment["DIASHOW_PLAYLISTS_PATH"] =
+            Path.Combine(_settingsDirectory, "playlists.json");
         lock (LaunchLock)
         {
             var previousAppData = Environment.GetEnvironmentVariable("APPDATA");

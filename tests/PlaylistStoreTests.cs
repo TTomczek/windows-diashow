@@ -12,6 +12,8 @@ public sealed class PlaylistStoreTests
         var root = Path.Combine(Path.GetTempPath(), "playlist-root");
         var item = Path.Combine(root, "Photos", "Image.jpg");
 
+        Assert.StartsWith("root-v1:", PlaylistPathIdentity.RootHash(root));
+        Assert.StartsWith("item-v1:", PlaylistPathIdentity.RelativePathHash(root, item));
         Assert.Equal(PlaylistPathIdentity.RootHash(root), PlaylistPathIdentity.RootHash(root.ToUpperInvariant()));
         Assert.Equal(
             PlaylistPathIdentity.RelativePathHash(root, item),
@@ -33,7 +35,7 @@ public sealed class PlaylistStoreTests
 
         var json = File.ReadAllText(sandbox.StorePath);
         Assert.Contains("Summer trip", json);
-        Assert.Contains("\"SchemaVersion\": 1", json);
+        Assert.Contains("\"SchemaVersion\": 2", json);
         Assert.DoesNotContain(sandbox.Root, json);
         Assert.DoesNotContain("private-photo.jpg", json);
     }
@@ -81,6 +83,14 @@ public sealed class PlaylistStoreTests
         Assert.Equal(0, stale.ItemCount);
         Assert.Equal(1, stale.StaleItemCount);
 
+        File.WriteAllText(path, "updated-media");
+        manager.UpdateMembership(id, [path], add: true);
+        var refreshed = manager.List(scannedItems: [MediaDiscovery.CreateItem(path)])
+            .Single(item => item.Id == id);
+        Assert.Equal(1, refreshed.ItemCount);
+        Assert.Equal(0, refreshed.StaleItemCount);
+
+        File.Delete(path);
         manager.CleanupStale(id, []);
         var cleaned = manager.List(scannedItems: []).Single(item => item.Id == id);
         Assert.Equal(0, cleaned.StaleItemCount);
@@ -129,7 +139,7 @@ public sealed class PlaylistStoreTests
         manager.LoadFolder(sandbox.Root);
 
         Assert.Contains(
-            "\"SchemaVersion\": 1",
+            "\"SchemaVersion\": 2",
             File.ReadAllText(sandbox.StorePath),
             StringComparison.Ordinal);
     }
@@ -163,8 +173,10 @@ public sealed class PlaylistStoreTests
         var playlists = first.List().Where(playlist => !playlist.IsFavorite).ToArray();
         Assert.Equal(20, ids.Distinct().Count());
         Assert.Equal(20, playlists.Length);
-        Assert.Equal(1, JsonDocument.Parse(File.ReadAllText(sandbox.StorePath))
-            .RootElement.GetProperty("SchemaVersion").GetInt32());
+        using var persisted = JsonDocument.Parse(File.ReadAllText(sandbox.StorePath));
+        Assert.Equal(
+            PlaylistStoreDocument.CurrentSchemaVersion,
+            persisted.RootElement.GetProperty("SchemaVersion").GetInt32());
     }
 
     [Fact]
@@ -172,9 +184,16 @@ public sealed class PlaylistStoreTests
     {
         using var sandbox = new PlaylistSandbox();
         var manager = sandbox.CreateManager();
-        manager.LoadFolder(sandbox.Root);
-        using var server = new PlaylistIpcServer(manager, () => []);
+        var firstPath = sandbox.CreateFile("first.jpg");
+        var secondPath = sandbox.CreateFile("second.jpg");
+        MediaItem[] scannedItems = [MediaDiscovery.CreateItem(firstPath), MediaDiscovery.CreateItem(secondPath)];
+        manager.LoadFolder(sandbox.Root, scannedItems);
+        using var server = new PlaylistIpcServer(manager, () => scannedItems);
         var issued = server.IssueCapability();
+        var playlistId = manager.Create(
+            "External list", PlaylistEndMode.LoopPlaylist, issued.ClientId);
+        manager.UpdateMembership(
+            playlistId, [firstPath, secondPath], add: true, clientId: issued.ClientId);
 
         var unauthorized = await SendRequestAsync(new PlaylistIpcRequest(
             1, "list", "not-a-valid-key"));
@@ -184,7 +203,18 @@ public sealed class PlaylistStoreTests
         var authorized = await SendRequestAsync(new PlaylistIpcRequest(
             1, "list", issued.Capability));
         Assert.True(authorized.Success);
-        Assert.Empty(authorized.Playlists!);
+        var listedPlaylist = Assert.Single(authorized.Playlists!);
+        Assert.Equal(2, listedPlaylist.ItemCount);
+        Assert.Empty(listedPlaylist.Items);
+
+        var firstPage = await SendRequestAsync(new PlaylistIpcRequest(
+            1, "inspect", issued.Capability, playlistId, Offset: 0, Limit: 1));
+        Assert.Equal(1, firstPage.NextOffset);
+        Assert.Equal(["first.jpg"], firstPage.Playlist!.Items);
+        var secondPage = await SendRequestAsync(new PlaylistIpcRequest(
+            1, "inspect", issued.Capability, playlistId, Offset: 1, Limit: 1));
+        Assert.Null(secondPage.NextOffset);
+        Assert.Equal(["second.jpg"], secondPage.Playlist!.Items);
     }
 
     private static async Task<PlaylistIpcResponse> SendRequestAsync(PlaylistIpcRequest request)

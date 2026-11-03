@@ -14,7 +14,9 @@ public sealed record PlaylistIpcRequest(
     string? PlaylistId = null,
     string? Name = null,
     string[]? Paths = null,
-    PlaylistEndMode? EndMode = null);
+    PlaylistEndMode? EndMode = null,
+    int Offset = 0,
+    int Limit = 50);
 
 public sealed record PlaylistIpcResponse(
     int Version,
@@ -22,7 +24,8 @@ public sealed record PlaylistIpcResponse(
     string? Error = null,
     string? Message = null,
     IReadOnlyList<PlaylistView>? Playlists = null,
-    PlaylistView? Playlist = null);
+    PlaylistView? Playlist = null,
+    int? NextOffset = null);
 
 public sealed class PlaylistIpcServer : IDisposable
 {
@@ -37,6 +40,7 @@ public sealed class PlaylistIpcServer : IDisposable
     private readonly SemaphoreSlim _connections = new(MaximumConcurrentClients);
     private readonly CancellationTokenSource _cancellation = new();
     private readonly Task _serverTask;
+    private int _disposed;
 
     public PlaylistIpcServer(PlaylistManager manager, Func<IEnumerable<MediaItem>> scannedItems)
     {
@@ -66,19 +70,26 @@ public sealed class PlaylistIpcServer : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
         _cancellation.Cancel();
+        _ = FinishDisposeAsync();
+    }
+
+    private async Task FinishDisposeAsync()
+    {
         try
         {
-            _serverTask.GetAwaiter().GetResult();
+            await _serverTask.ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch
         {
         }
         try
         {
-            Task.WhenAll(_activeHandlers.Values).GetAwaiter().GetResult();
+            await Task.WhenAll(_activeHandlers.Values).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch
         {
         }
         _cancellation.Dispose();
@@ -89,14 +100,15 @@ public sealed class PlaylistIpcServer : IDisposable
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var pipe = new NamedPipeServerStream(
-                PipeName,
-                PipeDirection.InOut,
-                MaximumConcurrentClients,
-                PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            NamedPipeServerStream? pipe = null;
             try
             {
+                pipe = new NamedPipeServerStream(
+                    PipeName,
+                    PipeDirection.InOut,
+                    MaximumConcurrentClients,
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
                 await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
                 if (!_connections.Wait(0))
                 {
@@ -114,7 +126,7 @@ public sealed class PlaylistIpcServer : IDisposable
             }
             catch
             {
-                pipe.Dispose();
+                pipe?.Dispose();
                 if (cancellationToken.IsCancellationRequested)
                     return;
                 await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
@@ -190,12 +202,21 @@ public sealed class PlaylistIpcServer : IDisposable
             switch (request.Operation)
             {
                 case "list":
-                    return new PlaylistIpcResponse(
-                        1, true, Playlists: _manager.List(clientId, items));
+                {
+                    var page = GetPage(request);
+                    var playlists = _manager.List(clientId, items);
+                    var results = playlists.Skip(page.Offset).Take(page.Limit)
+                        .Select(Summary)
+                        .ToArray();
+                    var nextOffset = page.Offset + results.Length < playlists.Count
+                        ? page.Offset + results.Length
+                        : (int?)null;
+                    return new PlaylistIpcResponse(1, true, Playlists: results, NextOffset: nextOffset);
+                }
                 case "inspect":
                 {
                     var playlist = FindVisiblePlaylist(request.PlaylistId, clientId, items);
-                    return new PlaylistIpcResponse(1, true, Playlist: playlist);
+                    return PagedPlaylistResponse(playlist, GetPage(request));
                 }
                 case "create":
                 {
@@ -203,7 +224,8 @@ public sealed class PlaylistIpcServer : IDisposable
                         request.Name ?? string.Empty,
                         request.EndMode ?? PlaylistEndMode.LoopPlaylist,
                         clientId);
-                    return new PlaylistIpcResponse(1, true, Playlist: FindVisiblePlaylist(id, clientId, items));
+                    return new PlaylistIpcResponse(
+                        1, true, Playlist: Summary(FindVisiblePlaylist(id, clientId, items)));
                 }
                 case "rename":
                     _manager.Rename(
@@ -211,14 +233,14 @@ public sealed class PlaylistIpcServer : IDisposable
                         request.Name ?? string.Empty,
                         clientId);
                     return new PlaylistIpcResponse(
-                        1, true, Playlist: FindVisiblePlaylist(request.PlaylistId, clientId, items));
+                        1, true, Playlist: Summary(FindVisiblePlaylist(request.PlaylistId, clientId, items)));
                 case "delete":
                     _manager.Delete(RequirePlaylistId(request.PlaylistId), clientId);
                     return new PlaylistIpcResponse(1, true);
                 case "cleanup_stale":
                     _manager.CleanupStale(RequirePlaylistId(request.PlaylistId), items, clientId);
-                    return new PlaylistIpcResponse(
-                        1, true, Playlist: FindVisiblePlaylist(request.PlaylistId, clientId, items));
+                    return PagedPlaylistResponse(
+                        FindVisiblePlaylist(request.PlaylistId, clientId, items), GetPage(request));
                 case "add":
                 case "remove":
                 {
@@ -229,8 +251,8 @@ public sealed class PlaylistIpcServer : IDisposable
                         paths,
                         request.Operation == "add",
                         clientId);
-                    return new PlaylistIpcResponse(
-                        1, true, Playlist: FindVisiblePlaylist(request.PlaylistId, clientId, items));
+                    return PagedPlaylistResponse(
+                        FindVisiblePlaylist(request.PlaylistId, clientId, items), GetPage(request));
                 }
                 case "set_end_mode":
                     if (request.EndMode is not { } endMode || !Enum.IsDefined(endMode))
@@ -238,7 +260,8 @@ public sealed class PlaylistIpcServer : IDisposable
                     _manager.SetEndMode(
                         RequirePlaylistId(request.PlaylistId), endMode, clientId);
                     return new PlaylistIpcResponse(
-                        1, true, Playlist: FindVisiblePlaylist(request.PlaylistId, clientId, items));
+                        1, true, Playlist: Summary(
+                            FindVisiblePlaylist(request.PlaylistId, clientId, items)));
                 default:
                     return Error("invalid_request", "The requested operation is not supported.");
             }
@@ -263,6 +286,32 @@ public sealed class PlaylistIpcServer : IDisposable
             ?? throw new PlaylistRequestException("not_found", "The requested playlist does not exist.");
     }
 
+    private static PlaylistView Summary(PlaylistView playlist) =>
+        playlist with { Items = Array.Empty<string>() };
+
+    private static PlaylistIpcResponse PagedPlaylistResponse(
+        PlaylistView playlist,
+        (int Offset, int Limit) page)
+    {
+        var items = playlist.Items.Skip(page.Offset).Take(page.Limit).ToArray();
+        var nextOffset = page.Offset + items.Length < playlist.Items.Count
+            ? page.Offset + items.Length
+            : (int?)null;
+        return new PlaylistIpcResponse(
+            1,
+            true,
+            Playlist: playlist with { Items = items },
+            NextOffset: nextOffset);
+    }
+
+    private static (int Offset, int Limit) GetPage(PlaylistIpcRequest request)
+    {
+        if (request.Offset < 0 || request.Offset > 10_000_000 ||
+            request.Limit is < 1 or > 100)
+            throw new PlaylistRequestException("invalid_request", "Pagination must use a nonnegative offset and a limit from 1 to 100.");
+        return (request.Offset, request.Limit);
+    }
+
     private static string RequirePlaylistId(string? id) =>
         string.IsNullOrWhiteSpace(id)
             ? throw new PlaylistRequestException("invalid_request", "A playlist ID is required.")
@@ -280,7 +329,7 @@ public sealed class PlaylistIpcServer : IDisposable
                 throw new PlaylistRequestException("invalid_request", "Paths must be folder-relative.");
 
             var fullPath = Path.GetFullPath(Path.Combine(root, path));
-            if (!PlaylistPathIdentity.TryGetRelativePath(root, fullPath, out _))
+            if (!PlaylistPathIdentity.TryGetSafeRelativePath(root, fullPath, out _))
                 throw new PlaylistRequestException("out_of_scope", "A path is outside the loaded folder.");
             resolved.Add(fullPath);
         }

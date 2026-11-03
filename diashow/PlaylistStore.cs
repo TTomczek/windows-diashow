@@ -15,7 +15,7 @@ public enum PlaylistEndMode
 public sealed class PlaylistStoreDocument
 {
     public int SchemaVersion { get; set; } = PlaylistStoreDocument.CurrentSchemaVersion;
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     public List<StoredFolderPlaylists> Folders { get; set; } = [];
 }
 
@@ -28,6 +28,7 @@ public sealed class StoredFolderPlaylists
 public sealed class StoredPlaylist
 {
     public string Id { get; set; } = string.Empty;
+    public string ProviderId { get; set; } = "external";
     public string Name { get; set; } = string.Empty;
     public PlaylistEndMode EndMode { get; set; }
     public string OwnerId { get; set; } = "local";
@@ -42,6 +43,7 @@ public sealed record StoredPlaylistMembership(
 
 public sealed record PlaylistView(
     string Id,
+    string ProviderId,
     string Name,
     PlaylistEndMode EndMode,
     bool IsFavorite,
@@ -64,10 +66,11 @@ public sealed class FilePlaylistStore : IPlaylistStore
 
     public FilePlaylistStore(string? filePath = null)
     {
-        _filePath = filePath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Diashow",
-            "playlists.json");
+        _filePath = filePath ?? Environment.GetEnvironmentVariable("DIASHOW_PLAYLISTS_PATH") ??
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Diashow",
+                "playlists.json");
         var user = OperatingSystem.IsWindows()
             ? WindowsIdentity.GetCurrent().User?.Value ?? Environment.UserName
             : Environment.UserName;
@@ -141,11 +144,29 @@ public sealed class FilePlaylistStore : IPlaylistStore
 
     private static PlaylistStoreDocument Migrate(PlaylistStoreDocument document)
     {
-        if (document.SchemaVersion is not (0 or PlaylistStoreDocument.CurrentSchemaVersion))
+        if (document.SchemaVersion is < 0 or > PlaylistStoreDocument.CurrentSchemaVersion)
             throw new InvalidDataException("The playlist store schema version is not supported.");
         if (document.SchemaVersion == 0)
-            document.SchemaVersion = PlaylistStoreDocument.CurrentSchemaVersion;
+        {
+            NormalizeFolders(document);
+            document.SchemaVersion = 1;
+        }
+        if (document.SchemaVersion == 1)
+        {
+            NormalizeFolders(document);
+            foreach (var playlist in document.Folders.SelectMany(folder => folder.Playlists))
+                playlist.ProviderId = playlist.Id == PlaylistManager.FavoriteId
+                    ? FavoritePlaylistProvider.Id
+                    : ExternalPlaylistProvider.Id;
+            document.SchemaVersion = 2;
+        }
 
+        NormalizeFolders(document);
+        return document;
+    }
+
+    private static void NormalizeFolders(PlaylistStoreDocument document)
+    {
         document.Folders ??= [];
         foreach (var folder in document.Folders)
         {
@@ -154,9 +175,11 @@ public sealed class FilePlaylistStore : IPlaylistStore
             {
                 playlist.Members ??= [];
                 playlist.OwnerId ??= PlaylistManager.LocalOwnerId;
+                playlist.ProviderId ??= playlist.Id == PlaylistManager.FavoriteId
+                    ? FavoritePlaylistProvider.Id
+                    : ExternalPlaylistProvider.Id;
             }
         }
-        return document;
     }
 
     private void Save(PlaylistStoreDocument document)
@@ -221,13 +244,34 @@ public sealed class FilePlaylistStore : IPlaylistStore
 public static class PlaylistPathIdentity
 {
     public static string RootHash(string rootFolder) =>
-        Hash("root-v1:" + Normalize(Path.GetFullPath(rootFolder)));
+        "root-v1:" + Hash("root-v1:" + Normalize(Path.GetFullPath(rootFolder)));
 
     public static string RelativePathHash(string rootFolder, string path)
     {
         if (!TryGetRelativePath(rootFolder, path, out var relativePath))
             throw new ArgumentException("The path is outside the scanned folder.", nameof(path));
-        return Hash("item-v1:" + NormalizeRelative(relativePath));
+        return HashRelativePath(relativePath);
+    }
+
+    internal static string HashRelativePath(string relativePath) =>
+        "item-v1:" + Hash("item-v1:" + NormalizeRelative(relativePath));
+
+    public static bool TryGetSafeRelativePath(string rootFolder, string path, out string relativePath)
+    {
+        if (!TryGetRelativePath(rootFolder, path, out relativePath))
+            return false;
+        try
+        {
+            return !ContainsReparsePoint(
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootFolder)),
+                relativePath);
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or
+                                           NotSupportedException or UnauthorizedAccessException)
+        {
+            relativePath = string.Empty;
+            return false;
+        }
     }
 
     public static bool TryGetRelativePath(string rootFolder, string path, out string relativePath)
@@ -247,9 +291,6 @@ public static class PlaylistPathIdentity
                 candidate.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
                 candidate.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal))
                 return false;
-            if (ContainsReparsePoint(root, candidate))
-                return false;
-
             relativePath = candidate;
             return true;
         }
@@ -388,6 +429,7 @@ public sealed class PlaylistManager
             data.Playlists.Add(new StoredPlaylist
             {
                 Id = id,
+                ProviderId = ExternalPlaylistProvider.Id,
                 Name = normalizedName,
                 EndMode = endMode,
                 OwnerId = ownerId
@@ -442,7 +484,9 @@ public sealed class PlaylistManager
     public bool IsFavorite(string rootFolder, string path)
     {
         var folder = Path.GetFullPath(rootFolder);
-        var hash = PlaylistPathIdentity.RelativePathHash(folder, path);
+        if (!PlaylistPathIdentity.TryGetRelativePath(folder, path, out var relative))
+            return false;
+        var hash = PlaylistPathIdentity.HashRelativePath(relative);
         var members = GetCachedMemberships(PlaylistPathIdentity.RootHash(folder));
         return members.TryGetValue(FavoriteId, out var favorite) && favorite.ContainsKey(hash);
     }
@@ -476,7 +520,7 @@ public sealed class PlaylistManager
         var folder = Path.GetFullPath(rootFolder);
         var members = paths.Select(path =>
         {
-            if (!PlaylistPathIdentity.TryGetRelativePath(folder, path, out _))
+            if (!PlaylistPathIdentity.TryGetSafeRelativePath(folder, path, out var relative))
                 throw new PlaylistRequestException("out_of_scope", "A path is outside the loaded folder.");
             if (add)
             {
@@ -484,7 +528,7 @@ public sealed class PlaylistManager
                 {
                     var metadata = PlaylistPathIdentity.GetMetadata(path);
                     return new StoredPlaylistMembership(
-                        PlaylistPathIdentity.RelativePathHash(folder, path),
+                        PlaylistPathIdentity.HashRelativePath(relative),
                         metadata.Length,
                         metadata.LastWriteUtcTicks);
                 }
@@ -495,7 +539,7 @@ public sealed class PlaylistManager
             }
 
             return new StoredPlaylistMembership(
-                PlaylistPathIdentity.RelativePathHash(folder, path), 0, 0);
+                PlaylistPathIdentity.HashRelativePath(relative), 0, 0);
         }).ToArray();
 
         var rootHash = PlaylistPathIdentity.RootHash(folder);
@@ -507,9 +551,20 @@ public sealed class PlaylistManager
             EnsureOwner(playlist, clientId);
             if (add)
             {
-                var existing = playlist.Members.Select(member => member.PathHash)
-                    .ToHashSet(StringComparer.Ordinal);
-                playlist.Members.AddRange(members.Where(member => existing.Add(member.PathHash)));
+                var existing = playlist.Members
+                    .Select((member, index) => (member.PathHash, index))
+                    .GroupBy(item => item.PathHash, StringComparer.Ordinal)
+                    .ToDictionary(group => group.Key, group => group.First().index, StringComparer.Ordinal);
+                foreach (var member in members)
+                {
+                    if (existing.TryGetValue(member.PathHash, out var index))
+                        playlist.Members[index] = member;
+                    else
+                    {
+                        existing.Add(member.PathHash, playlist.Members.Count);
+                        playlist.Members.Add(member);
+                    }
+                }
             }
             else
             {
@@ -539,10 +594,12 @@ public sealed class PlaylistManager
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in scannedItems)
         {
-            if (!PlaylistPathIdentity.TryGetRelativePath(folder, item.Path, out _))
+            if (!PlaylistPathIdentity.TryGetRelativePath(folder, item.Path, out var relative))
                 continue;
-            var hash = PlaylistPathIdentity.RelativePathHash(folder, item.Path);
+            var hash = PlaylistPathIdentity.HashRelativePath(relative);
             if (!hashes.TryGetValue(hash, out var metadata))
+                continue;
+            if (!PlaylistPathIdentity.TryGetSafeRelativePath(folder, item.Path, out _))
                 continue;
             try
             {
@@ -584,12 +641,12 @@ public sealed class PlaylistManager
         var result = new Dictionary<string, (MediaItem, long, long)>(StringComparer.Ordinal);
         foreach (var item in scannedItems)
         {
-            if (!PlaylistPathIdentity.TryGetRelativePath(rootFolder, item.Path, out _))
+            if (!PlaylistPathIdentity.TryGetRelativePath(rootFolder, item.Path, out var relative))
                 continue;
             try
             {
                 var metadata = PlaylistPathIdentity.GetMetadata(item.Path);
-                result[PlaylistPathIdentity.RelativePathHash(rootFolder, item.Path)] =
+                result[PlaylistPathIdentity.HashRelativePath(relative)] =
                     (item, metadata.Length, metadata.LastWriteUtcTicks);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -626,6 +683,7 @@ public sealed class PlaylistManager
         }
         return new PlaylistView(
             playlist.Id,
+            playlist.ProviderId,
             playlist.Id == FavoriteId ? Localization.Get("Favorite") : playlist.Name,
             playlist.EndMode,
             playlist.Id == FavoriteId,
@@ -708,13 +766,22 @@ public sealed class PlaylistManager
 
     private static void EnsureFavorite(StoredFolderPlaylists folder)
     {
-        if (folder.Playlists.All(playlist => playlist.Id != FavoriteId))
+        var favorite = folder.Playlists.FirstOrDefault(playlist => playlist.Id == FavoriteId);
+        if (favorite is null)
             folder.Playlists.Insert(0, CreateFavorite());
+        else
+        {
+            favorite.ProviderId = FavoritePlaylistProvider.Id;
+            favorite.Name = string.Empty;
+            favorite.OwnerId = LocalOwnerId;
+            favorite.SharedWithClients = false;
+        }
     }
 
     private static StoredPlaylist CreateFavorite() => new()
     {
         Id = FavoriteId,
+        ProviderId = FavoritePlaylistProvider.Id,
         Name = string.Empty,
         OwnerId = LocalOwnerId
     };
@@ -771,15 +838,17 @@ public interface IPlaylistProvider
 
 public sealed class FavoritePlaylistProvider : IPlaylistProvider
 {
+    public const string Id = "favorite";
     public int ContractVersion => 1;
-    public string ProviderId => PlaylistManager.FavoriteId;
+    public string ProviderId => Id;
     public bool IsBuiltIn => true;
 }
 
 public sealed class ExternalPlaylistProvider : IPlaylistProvider
 {
+    public const string Id = "external";
     public int ContractVersion => 1;
-    public string ProviderId => "external";
+    public string ProviderId => Id;
     public bool IsBuiltIn => true;
 }
 

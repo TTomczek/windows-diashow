@@ -63,12 +63,33 @@ public sealed class MainWindowUiTests : UiTestBase
         WaitUntil(() => HasName("1 / 2"), TimeSpan.FromSeconds(10));
         MainWindow.SetForeground();
         MainWindow.Focus();
+        var bounds = MainWindow.BoundingRectangle;
+        Mouse.MoveTo(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height - 50);
         ClickButton("Pause");
         ClickButton("Add current item to Favorites");
         WaitUntil(() => HasName("Remove current item from Favorites"), TimeSpan.FromSeconds(5));
 
         ClickButton("Playlists");
         WaitUntil(() => HasName("Create playlist"), TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public void Empty_favorite_playlist_shows_empty_state_and_active_indicator()
+    {
+        WaitUntil(() => HasName("1 / 2"), TimeSpan.FromSeconds(10));
+        MainWindow.SetForeground();
+        MainWindow.Focus();
+        var bounds = MainWindow.BoundingRectangle;
+        Mouse.MoveTo(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height - 50);
+        ClickButton("Pause");
+
+        ClickButton("Playlists");
+        ClickButton("Play selected playlist");
+
+        WaitUntil(
+            () => HasName("This playlist has no items matching the current media filter."),
+            TimeSpan.FromSeconds(5));
+        Assert.True(HasName("Playlist: Favorite"));
     }
 
     private bool HasName(string name) =>

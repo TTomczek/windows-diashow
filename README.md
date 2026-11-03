@@ -67,7 +67,7 @@ Playlist data is kept separately in `%LOCALAPPDATA%\Diashow\playlists.json`. The
 
 The app exposes `\\.\pipe\Diashow.Playlists.v1` to processes running as the current Windows user. Open **Playlists → Local API access → Generate API access key** to issue a capability and copy it to the clipboard. Keys are held only for the current app run; generate a new key after restarting, or revoke all issued keys from the same panel. By default, API clients can manage only playlists created using their own capability. The app's **Allow other local API clients to manage this playlist** checkbox explicitly shares the selected playlist with other issued clients.
 
-Each connection sends one versioned JSON request and receives one JSON response. A four-byte length prefix in big-endian byte order precedes each JSON message; messages are limited to 64 KiB. Requests use protocol `version: 1`, the issued `capability`, and an operation:
+Each connection sends one versioned JSON request and receives one JSON response. A four-byte length prefix in big-endian byte order precedes each JSON message; messages are limited to 64 KiB. Requests use protocol `version: 1`, the issued `capability`, and an operation. Responses are paginated: use `offset` and `limit` (default 50, maximum 100); `nextOffset` indicates another page. For `list`, pages contain playlist summaries; for `inspect` and membership updates, pages contain member paths.
 
 | Operation | Additional fields | Purpose |
 | --- | --- | --- |

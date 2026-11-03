@@ -594,6 +594,8 @@ public partial class MainWindow : Window
                 UpdateActivePlaylistIndicator();
                 if (_playlist?.Next() is { } first)
                     ShowItem(first);
+                else
+                    ShowMessage("NoMediaMessage");
             }
             await RefreshPlaylistPanelAsync();
         }
@@ -818,6 +820,7 @@ public partial class MainWindow : Window
 
     private async void ShowItem(MediaItem item, bool preservePlaybackState = false)
     {
+        EmptyState.Visibility = Visibility.Collapsed;
         var transitionVersion = ++_transitionVersion;
         _playbackCancellation?.Cancel();
         StopGif();
