@@ -57,6 +57,7 @@ validation projects:
 ### Keyboard shortcuts
 
 - Shortcut behavior MUST remain discoverable in the README and localized UI text.
+- `Shift+F` toggles Favorite outside editable text controls; keep plain `F` for fullscreen.
 - New shortcuts MUST avoid conflicts with existing shortcuts and ordinary
   text/input behavior.
 - Shortcuts SHOULD be tested and provide an equivalent discoverable UI action where
@@ -100,11 +101,17 @@ the principles.
 - `VideoFrameExtractor.cs` extracts timestamped video frames off the UI thread.
 - `Playlist.cs` owns playback ordering, filtering, navigation, and preload
   candidates.
+- `PlaylistStore.cs` owns folder-scoped hashed identities, versioned persistence,
+  built-in providers, stale-member handling, and playlist ownership.
+- `PlaylistIpcServer.cs` exposes the current-folder API through a current-user-only
+  named pipe and requires an app-issued capability for every request.
 - `MainWindow.xaml.cs` coordinates UI state, dispatcher updates, cancellation,
   playback timers, and folder loading.
 - `Localization.cs` owns the supported language dictionaries.
 - `Settings.cs` persists user settings in
   `%APPDATA%\diashow\settings.json`; keep existing settings backward compatible.
+- Playlist data is separate from settings in `%LOCALAPPDATA%\Diashow\playlists.json`;
+  never persist absolute folder or file paths there.
 - `UpdateManager.cs` verifies signed updates; do not bypass signature validation.
 
 Prefer the existing dependency-light Windows/WPF patterns and immutable data

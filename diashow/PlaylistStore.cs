@@ -14,7 +14,8 @@ public enum PlaylistEndMode
 
 public sealed class PlaylistStoreDocument
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = PlaylistStoreDocument.CurrentSchemaVersion;
+    public const int CurrentSchemaVersion = 1;
     public List<StoredFolderPlaylists> Folders { get; set; } = [];
 }
 
@@ -83,7 +84,7 @@ public sealed class FilePlaylistStore : IPlaylistStore
         {
             var document = Load();
             update(document);
-            document.SchemaVersion = 1;
+            document.SchemaVersion = PlaylistStoreDocument.CurrentSchemaVersion;
             Save(document);
             return true;
         });
@@ -118,11 +119,15 @@ public sealed class FilePlaylistStore : IPlaylistStore
 
             var document = JsonSerializer.Deserialize<PlaylistStoreDocument>(
                 File.ReadAllText(_filePath), JsonOptions);
-            if (document is { SchemaVersion: 1, Folders: not null })
-                return document;
+            if (document is not null)
+                return Migrate(document);
         }
         catch (JsonException)
         {
+        }
+        catch (InvalidDataException)
+        {
+            throw;
         }
         catch (IOException)
         {
@@ -132,6 +137,26 @@ public sealed class FilePlaylistStore : IPlaylistStore
         }
 
         return new PlaylistStoreDocument();
+    }
+
+    private static PlaylistStoreDocument Migrate(PlaylistStoreDocument document)
+    {
+        if (document.SchemaVersion is not (0 or PlaylistStoreDocument.CurrentSchemaVersion))
+            throw new InvalidDataException("The playlist store schema version is not supported.");
+        if (document.SchemaVersion == 0)
+            document.SchemaVersion = PlaylistStoreDocument.CurrentSchemaVersion;
+
+        document.Folders ??= [];
+        foreach (var folder in document.Folders)
+        {
+            folder.Playlists ??= [];
+            foreach (var playlist in folder.Playlists)
+            {
+                playlist.Members ??= [];
+                playlist.OwnerId ??= PlaylistManager.LocalOwnerId;
+            }
+        }
+        return document;
     }
 
     private void Save(PlaylistStoreDocument document)
@@ -222,15 +247,38 @@ public static class PlaylistPathIdentity
                 candidate.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
                 candidate.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal))
                 return false;
+            if (ContainsReparsePoint(root, candidate))
+                return false;
 
             relativePath = candidate;
             return true;
         }
         catch (Exception exception) when (exception is ArgumentException or IOException or
-                                           NotSupportedException)
+                                           NotSupportedException or UnauthorizedAccessException)
         {
             return false;
         }
+    }
+
+    private static bool ContainsReparsePoint(string root, string relativePath)
+    {
+        var current = root;
+        foreach (var segment in relativePath.Split(
+                     [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            try
+            {
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                    return true;
+            }
+            catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+            {
+                break;
+            }
+        }
+        return false;
     }
 
     public static (long Length, long LastWriteUtcTicks) GetMetadata(string path)
@@ -254,10 +302,17 @@ public static class PlaylistPathIdentity
 
 public sealed class PlaylistManager
 {
+    private static readonly TimeSpan MembershipCacheLifetime = TimeSpan.FromSeconds(30);
     public const string FavoriteId = "favorite";
     public const string LocalOwnerId = "local";
     private readonly IPlaylistStore _store;
+    private readonly object _membershipCacheLock = new();
+    private string? _membershipCacheRootHash;
+    private Dictionary<string, Dictionary<string, StoredPlaylistMembership>> _membershipCache = [];
+    private long _membershipCacheUpdatedAt;
     private string? _currentFolder;
+    private int _scanComplete;
+    private int _folderGeneration;
 
     public PlaylistManager(IPlaylistStore store) => _store = store;
 
@@ -265,16 +320,30 @@ public sealed class PlaylistManager
 
     public IReadOnlyList<PlaylistView> LoadFolder(string rootFolder, IEnumerable<MediaItem>? scannedItems = null)
     {
+        var generation = Interlocked.Increment(ref _folderGeneration);
         var folder = Path.GetFullPath(rootFolder);
-        Volatile.Write(ref _currentFolder, folder);
         var rootHash = PlaylistPathIdentity.RootHash(folder);
         _store.Update(document =>
         {
             var data = GetFolder(document, rootHash, create: true)!;
             EnsureFavorite(data);
         });
+        RefreshMembershipCache(rootHash);
+        if (generation != Volatile.Read(ref _folderGeneration))
+            return [];
+        Volatile.Write(ref _currentFolder, folder);
+        Volatile.Write(ref _scanComplete, 0);
         return List(folder, scannedItems ?? []);
     }
+
+    public void CompleteScan(string rootFolder)
+    {
+        var folder = Path.GetFullPath(rootFolder);
+        if (string.Equals(folder, CurrentFolder, StringComparison.OrdinalIgnoreCase))
+            Volatile.Write(ref _scanComplete, 1);
+    }
+
+    public bool IsScanComplete => Volatile.Read(ref _scanComplete) != 0;
 
     public IReadOnlyList<PlaylistView> List(
         string? clientId = null,
@@ -293,11 +362,13 @@ public sealed class PlaylistManager
     {
         var rootHash = PlaylistPathIdentity.RootHash(rootFolder);
         var items = BuildScannedItems(rootFolder, scannedItems);
+        var scanComplete = IsScanComplete &&
+            string.Equals(rootFolder, CurrentFolder, StringComparison.OrdinalIgnoreCase);
         var folder = _store.Read().Folders.FirstOrDefault(entry => entry.RootHash == rootHash);
         var records = folder?.Playlists ?? [CreateFavorite()];
         return records
             .Where(record => clientId is null || CanAccess(record, clientId))
-            .Select(record => ToView(rootFolder, record, items))
+            .Select(record => ToView(rootFolder, record, items, scanComplete))
             .OrderByDescending(view => view.IsFavorite)
             .ThenBy(view => view.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
@@ -306,6 +377,7 @@ public sealed class PlaylistManager
     public string Create(string name, PlaylistEndMode endMode, string ownerId = LocalOwnerId)
     {
         var normalizedName = ValidateName(name);
+        ValidateEndMode(endMode);
         var folder = RequireCurrentFolder();
         var id = Guid.NewGuid().ToString("N");
         _store.Update(document =>
@@ -321,6 +393,7 @@ public sealed class PlaylistManager
                 OwnerId = ownerId
             });
         });
+        RefreshMembershipCache(PlaylistPathIdentity.RootHash(folder));
         return id;
     }
 
@@ -345,30 +418,43 @@ public sealed class PlaylistManager
         {
             var data = GetFolder(document, PlaylistPathIdentity.RootHash(folder), create: true)!;
             var playlist = FindPlaylist(data, id);
-            EnsureOwner(playlist, clientId, forWrite: true);
+            EnsureOwner(playlist, clientId);
             data.Playlists.Remove(playlist);
         });
+        RefreshMembershipCache(PlaylistPathIdentity.RootHash(folder));
     }
 
     public void SetShared(string id, bool shared) =>
         UpdatePlaylist(id, LocalOwnerId, (_, playlist) => playlist.SharedWithClients = shared);
 
     public void SetEndMode(string id, PlaylistEndMode endMode, string clientId = LocalOwnerId) =>
-        UpdatePlaylist(id, clientId, (_, playlist) => playlist.EndMode = endMode);
+        UpdatePlaylist(id, clientId, (_, playlist) =>
+        {
+            playlist.EndMode = ValidateEndMode(endMode);
+        });
 
     public bool IsFavorite(string path)
     {
         var folder = RequireCurrentFolder();
+        return IsFavorite(folder, path);
+    }
+
+    public bool IsFavorite(string rootFolder, string path)
+    {
+        var folder = Path.GetFullPath(rootFolder);
         var hash = PlaylistPathIdentity.RelativePathHash(folder, path);
-        var favorite = GetCurrentPlaylists().FirstOrDefault(item => item.Id == FavoriteId);
-        return favorite?.Members.Any(member => member.PathHash == hash) == true;
+        var members = GetCachedMemberships(PlaylistPathIdentity.RootHash(folder));
+        return members.TryGetValue(FavoriteId, out var favorite) && favorite.ContainsKey(hash);
     }
 
     public void SetFavorite(string path, bool isFavorite)
     {
         var folder = RequireCurrentFolder();
-        UpdateMembership(folder, FavoriteId, [path], add: isFavorite, LocalOwnerId);
+        SetFavorite(folder, path, isFavorite);
     }
+
+    public void SetFavorite(string rootFolder, string path, bool isFavorite) =>
+        UpdateMembership(Path.GetFullPath(rootFolder), FavoriteId, [path], isFavorite, LocalOwnerId);
 
     public void UpdateMembership(
         string playlistId,
@@ -402,9 +488,9 @@ public sealed class PlaylistManager
                         metadata.Length,
                         metadata.LastWriteUtcTicks);
                 }
-                catch (FileNotFoundException exception)
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
-                    throw new PlaylistRequestException("stale", exception.Message);
+                    throw new PlaylistRequestException("stale", "The requested media file is unavailable.");
                 }
             }
 
@@ -418,7 +504,7 @@ public sealed class PlaylistManager
             var data = GetFolder(document, rootHash, create: true)!;
             EnsureFavorite(data);
             var playlist = FindPlaylist(data, playlistId);
-            EnsureOwner(playlist, clientId, forWrite: true);
+            EnsureOwner(playlist, clientId);
             if (add)
             {
                 var existing = playlist.Members.Select(member => member.PathHash)
@@ -432,18 +518,24 @@ public sealed class PlaylistManager
                 playlist.Members.RemoveAll(member => remove.Contains(member.PathHash));
             }
         });
+        RefreshMembershipCache(rootHash);
     }
 
     public HashSet<string> GetPlayablePaths(
         string playlistId,
+        IEnumerable<MediaItem> scannedItems) =>
+        GetPlayablePaths(RequireCurrentFolder(), playlistId, scannedItems);
+
+    public HashSet<string> GetPlayablePaths(
+        string rootFolder,
+        string playlistId,
         IEnumerable<MediaItem> scannedItems)
     {
-        var folder = RequireCurrentFolder();
-        var stored = GetCurrentPlaylists().FirstOrDefault(item => item.Id == playlistId);
-        var hashes = stored?.Members.ToDictionary(
-            member => member.PathHash,
-            member => (member.FileLength, member.LastWriteUtcTicks),
-            StringComparer.Ordinal) ?? [];
+        var folder = Path.GetFullPath(rootFolder);
+        var rootHash = PlaylistPathIdentity.RootHash(folder);
+        var cached = GetCachedMemberships(rootHash);
+        if (!cached.TryGetValue(playlistId, out var hashes))
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in scannedItems)
         {
@@ -459,19 +551,24 @@ public sealed class PlaylistManager
                     metadata.LastWriteUtcTicks == current.LastWriteUtcTicks)
                     result.Add(item.Path);
             }
-            catch (FileNotFoundException)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
             }
         }
         return result;
     }
 
-    public void CleanupStale(string id, IEnumerable<MediaItem> scannedItems)
+    public void CleanupStale(string id, IEnumerable<MediaItem> scannedItems) =>
+        CleanupStale(id, scannedItems, LocalOwnerId);
+
+    public void CleanupStale(string id, IEnumerable<MediaItem> scannedItems, string clientId)
     {
+        if (!IsScanComplete)
+            throw new PlaylistRequestException("scan_in_progress", "Wait for folder scanning to complete.");
         var playableHashes = GetPlayablePaths(id, scannedItems)
             .Select(path => PlaylistPathIdentity.RelativePathHash(RequireCurrentFolder(), path))
             .ToHashSet(StringComparer.Ordinal);
-        UpdatePlaylist(id, LocalOwnerId, (_, playlist) =>
+        UpdatePlaylist(id, clientId, (_, playlist) =>
             playlist.Members.RemoveAll(member => !playableHashes.Contains(member.PathHash)));
     }
 
@@ -479,10 +576,6 @@ public sealed class PlaylistManager
         PlaylistPathIdentity.TryGetRelativePath(RequireCurrentFolder(), path, out var relative)
             ? relative
             : null;
-
-    private IReadOnlyList<PlaylistView> List(
-        string rootFolder,
-        IEnumerable<MediaItem> scannedItems) => List(rootFolder, scannedItems, null);
 
     private Dictionary<string, (MediaItem Item, long Length, long LastWriteUtcTicks)> BuildScannedItems(
         string rootFolder,
@@ -499,7 +592,7 @@ public sealed class PlaylistManager
                 result[PlaylistPathIdentity.RelativePathHash(rootFolder, item.Path)] =
                     (item, metadata.Length, metadata.LastWriteUtcTicks);
             }
-            catch (FileNotFoundException)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
             }
         }
@@ -509,14 +602,20 @@ public sealed class PlaylistManager
     private static PlaylistView ToView(
         string rootFolder,
         StoredPlaylist playlist,
-        Dictionary<string, (MediaItem Item, long Length, long LastWriteUtcTicks)> scannedItems)
+        Dictionary<string, (MediaItem Item, long Length, long LastWriteUtcTicks)> scannedItems,
+        bool scanComplete)
     {
         var paths = new List<string>();
         var staleCount = 0;
         foreach (var member in playlist.Members)
         {
-            if (!scannedItems.TryGetValue(member.PathHash, out var scanned) ||
-                scanned.Length != member.FileLength ||
+            if (!scannedItems.TryGetValue(member.PathHash, out var scanned))
+            {
+                if (scanComplete)
+                    staleCount++;
+                continue;
+            }
+            if (scanned.Length != member.FileLength ||
                 scanned.LastWriteUtcTicks != member.LastWriteUtcTicks)
             {
                 staleCount++;
@@ -547,16 +646,47 @@ public sealed class PlaylistManager
             var data = GetFolder(document, PlaylistPathIdentity.RootHash(folder), create: true)!;
             EnsureFavorite(data);
             var playlist = FindPlaylist(data, id);
-            EnsureOwner(playlist, clientId, forWrite: true);
+            EnsureOwner(playlist, clientId);
             update(data, playlist);
         });
+        RefreshMembershipCache(PlaylistPathIdentity.RootHash(folder));
     }
 
-    private List<StoredPlaylist> GetCurrentPlaylists()
+    private Dictionary<string, Dictionary<string, StoredPlaylistMembership>> GetCachedMemberships(
+        string rootHash)
     {
-        var folder = RequireCurrentFolder();
-        var rootHash = PlaylistPathIdentity.RootHash(folder);
-        return _store.Read().Folders.FirstOrDefault(entry => entry.RootHash == rootHash)?.Playlists ?? [];
+        lock (_membershipCacheLock)
+        {
+            if (_membershipCacheRootHash == rootHash &&
+                DateTime.UtcNow.Ticks - _membershipCacheUpdatedAt < MembershipCacheLifetime.Ticks)
+                return _membershipCache;
+
+            var folder = _store.Read().Folders.FirstOrDefault(entry => entry.RootHash == rootHash);
+            _membershipCache = folder?.Playlists
+                .GroupBy(playlist => playlist.Id, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.First().Members
+                        .GroupBy(member => member.PathHash, StringComparer.Ordinal)
+                        .ToDictionary(
+                            members => members.Key,
+                            members => members.First(),
+                            StringComparer.Ordinal),
+                    StringComparer.Ordinal) ?? [];
+            _membershipCacheRootHash = rootHash;
+            _membershipCacheUpdatedAt = DateTime.UtcNow.Ticks;
+            return _membershipCache;
+        }
+    }
+
+    private void RefreshMembershipCache(string rootHash)
+    {
+        lock (_membershipCacheLock)
+        {
+            _membershipCacheRootHash = null;
+            _membershipCacheUpdatedAt = 0;
+        }
+        _ = GetCachedMemberships(rootHash);
     }
 
     private string RequireCurrentFolder() => CurrentFolder ??
@@ -596,9 +726,11 @@ public sealed class PlaylistManager
     private static bool CanAccess(StoredPlaylist playlist, string clientId) =>
         playlist.OwnerId == clientId || playlist.SharedWithClients;
 
-    private static void EnsureOwner(StoredPlaylist playlist, string clientId, bool forWrite)
+    private static void EnsureOwner(StoredPlaylist playlist, string clientId)
     {
-        if (playlist.OwnerId != clientId && !(playlist.SharedWithClients && !forWrite))
+        if (clientId != LocalOwnerId &&
+            playlist.OwnerId != clientId &&
+            !playlist.SharedWithClients)
             throw new PlaylistRequestException("unauthorized", "The client does not own this playlist.");
     }
 
@@ -610,6 +742,11 @@ public sealed class PlaylistManager
             throw new PlaylistRequestException("invalid_request", "Playlist names must be 1-128 valid characters.");
         return result;
     }
+
+    private static PlaylistEndMode ValidateEndMode(PlaylistEndMode endMode) =>
+        Enum.IsDefined(endMode)
+            ? endMode
+            : throw new PlaylistRequestException("invalid_request", "The playlist end mode is invalid.");
 
     private static void EnsureUniqueName(StoredFolderPlaylists folder, string name, string? exceptId)
     {

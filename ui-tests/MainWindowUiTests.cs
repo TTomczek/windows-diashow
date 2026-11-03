@@ -57,6 +57,20 @@ public sealed class MainWindowUiTests : UiTestBase
         WaitUntil(() => HasName("2 / 2"), TimeSpan.FromSeconds(10));
     }
 
+    [Fact]
+    public void Favorite_toggle_and_playlist_panel_are_accessible()
+    {
+        WaitUntil(() => HasName("1 / 2"), TimeSpan.FromSeconds(10));
+        MainWindow.SetForeground();
+        MainWindow.Focus();
+        ClickButton("Pause");
+        ClickButton("Add current item to Favorites");
+        WaitUntil(() => HasName("Remove current item from Favorites"), TimeSpan.FromSeconds(5));
+
+        ClickButton("Playlists");
+        WaitUntil(() => HasName("Create playlist"), TimeSpan.FromSeconds(5));
+    }
+
     private bool HasName(string name) =>
         MainWindow.FindAllDescendants().Any(element => element.Name == name);
 

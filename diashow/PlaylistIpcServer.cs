@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace diashow;
 
@@ -28,10 +29,11 @@ public sealed class PlaylistIpcServer : IDisposable
     public const string PipeName = "Diashow.Playlists.v1";
     private const int MaximumMessageLength = 64 * 1024;
     private const int MaximumConcurrentClients = 8;
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
     private readonly PlaylistManager _manager;
     private readonly Func<IEnumerable<MediaItem>> _scannedItems;
     private readonly ConcurrentDictionary<string, string> _capabilities = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<Guid, Task> _activeHandlers = new();
     private readonly SemaphoreSlim _connections = new(MaximumConcurrentClients);
     private readonly CancellationTokenSource _cancellation = new();
     private readonly Task _serverTask;
@@ -43,8 +45,17 @@ public sealed class PlaylistIpcServer : IDisposable
         _serverTask = RunAsync(_cancellation.Token);
     }
 
+    private static JsonSerializerOptions CreateJsonOptions()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        options.Converters.Add(new JsonStringEnumConverter());
+        return options;
+    }
+
     public (string ClientId, string Capability) IssueCapability()
     {
+        if (_capabilities.Count >= 32)
+            throw new PlaylistRequestException("limit_exceeded", "Revoke access keys before creating another.");
         var clientId = Guid.NewGuid().ToString("N");
         var capability = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         _capabilities[HashCapability(capability)] = clientId;
@@ -59,6 +70,13 @@ public sealed class PlaylistIpcServer : IDisposable
         try
         {
             _serverTask.GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        try
+        {
+            Task.WhenAll(_activeHandlers.Values).GetAwaiter().GetResult();
         }
         catch (OperationCanceledException)
         {
@@ -85,7 +103,14 @@ public sealed class PlaylistIpcServer : IDisposable
                     pipe.Dispose();
                     continue;
                 }
-                _ = HandleConnectionAsync(pipe, cancellationToken);
+                var id = Guid.NewGuid();
+                var handler = HandleConnectionAsync(pipe, cancellationToken);
+                _activeHandlers[id] = handler;
+                _ = handler.ContinueWith(
+                    completed => { _activeHandlers.TryRemove(id, out _); },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
             }
             catch
             {
@@ -102,21 +127,24 @@ public sealed class PlaylistIpcServer : IDisposable
         CancellationToken cancellationToken)
     {
         using (pipe)
+        using (var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
+            requestTimeout.CancelAfter(TimeSpan.FromSeconds(30));
+            var requestToken = requestTimeout.Token;
             try
             {
                 var header = new byte[sizeof(int)];
-                await pipe.ReadExactlyAsync(header, cancellationToken).ConfigureAwait(false);
+                await pipe.ReadExactlyAsync(header, requestToken).ConfigureAwait(false);
                 var length = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(header);
                 if (length is <= 0 or > MaximumMessageLength)
                 {
                     await WriteResponseAsync(pipe, Error("invalid_request", "Invalid message length."),
-                        cancellationToken).ConfigureAwait(false);
+                        requestToken).ConfigureAwait(false);
                     return;
                 }
 
                 var payload = new byte[length];
-                await pipe.ReadExactlyAsync(payload, cancellationToken).ConfigureAwait(false);
+                await pipe.ReadExactlyAsync(payload, requestToken).ConfigureAwait(false);
                 PlaylistIpcRequest? request;
                 try
                 {
@@ -130,9 +158,12 @@ public sealed class PlaylistIpcServer : IDisposable
                 var response = request is null
                     ? Error("invalid_request", "The request is not valid JSON.")
                     : HandleRequest(request);
-                await WriteResponseAsync(pipe, response, cancellationToken).ConfigureAwait(false);
+                await WriteResponseAsync(pipe, response, requestToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is IOException or OperationCanceledException)
+            {
+            }
+            catch
             {
             }
             finally
@@ -184,6 +215,10 @@ public sealed class PlaylistIpcServer : IDisposable
                 case "delete":
                     _manager.Delete(RequirePlaylistId(request.PlaylistId), clientId);
                     return new PlaylistIpcResponse(1, true);
+                case "cleanup_stale":
+                    _manager.CleanupStale(RequirePlaylistId(request.PlaylistId), items, clientId);
+                    return new PlaylistIpcResponse(
+                        1, true, Playlist: FindVisiblePlaylist(request.PlaylistId, clientId, items));
                 case "add":
                 case "remove":
                 {

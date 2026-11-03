@@ -13,12 +13,15 @@ public sealed class Playlist
     private HashSet<string>? _scopePaths;
     private PlaylistEndMode _endMode;
     private bool _appendRemainderStarted;
+    private bool _scopeComplete = true;
 
     public MediaItem? Current => _historyIndex >= 0 && _historyIndex < _history.Count ? _history[_historyIndex] : null;
     public int CurrentPosition => _historyIndex >= 0
         ? _history.Take(_historyIndex + 1).Count(IsVisibleInActivePlaylist)
         : 0;
-    public int TotalCount => Filtered().Count;
+    public int TotalCount => _appendRemainderStarted
+        ? _all.Count(item => IsIncluded(item.Kind))
+        : Filtered().Count;
     public bool CanGoBack => _historyIndex > 0;
     public bool IsPlaylistActive => _scopePaths is not null;
     public IReadOnlyList<MediaItem> Items => _all;
@@ -108,10 +111,12 @@ public sealed class Playlist
     public void SetActivePlaylist(
         IEnumerable<string>? paths,
         PlaylistEndMode endMode = PlaylistEndMode.LoopPlaylist,
-        bool resetHistory = true)
+        bool resetHistory = true,
+        bool scanComplete = true)
     {
         _scopePaths = paths?.ToHashSet(StringComparer.OrdinalIgnoreCase);
         _endMode = endMode;
+        _scopeComplete = scanComplete;
         if (resetHistory)
         {
             _history.Clear();
@@ -125,6 +130,7 @@ public sealed class Playlist
     {
         _scopePaths = null;
         _appendRemainderStarted = false;
+        _scopeComplete = true;
         _history.Clear();
         _historyIndex = -1;
         RebuildUnseen();
@@ -164,11 +170,19 @@ public sealed class Playlist
 
     public MediaItem? Next()
     {
-        if (_historyIndex < _history.Count - 1)
-            return _history[++_historyIndex];
+        while (_historyIndex < _history.Count - 1)
+        {
+            var historical = _history[++_historyIndex];
+            if (IsVisibleInActivePlaylist(historical))
+                return historical;
+        }
 
         if (_unseen.Count == 0)
         {
+            if (_scopePaths is not null &&
+                (!_scopeComplete || !HasVisiblePlaylistMembers()))
+                return null;
+
             if (_scopePaths is not null && _endMode == PlaylistEndMode.AppendNonPlaylistItems &&
                 !_appendRemainderStarted)
             {
@@ -209,8 +223,13 @@ public sealed class Playlist
 
     public MediaItem? Previous()
     {
-        if (!CanGoBack) return Current;
-        return _history[--_historyIndex];
+        while (CanGoBack)
+        {
+            var previous = _history[--_historyIndex];
+            if (IsVisibleInActivePlaylist(previous))
+                return previous;
+        }
+        return Current;
     }
 
     public MediaItem? JumpTo(string? path)
@@ -249,7 +268,12 @@ public sealed class Playlist
         .ToList();
 
     private bool IsVisibleInActivePlaylist(MediaItem item) =>
-        IsIncluded(item.Kind) && IsInActiveScope(item);
+        IsIncluded(item.Kind) &&
+        (_appendRemainderStarted || IsInActiveScope(item));
+
+    private bool HasVisiblePlaylistMembers() =>
+        _scopePaths is not null &&
+        _all.Any(item => IsIncluded(item.Kind) && _scopePaths.Contains(item.Path));
 
     private bool IsInActiveScope(MediaItem item) =>
         _scopePaths is null ||

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Automation;
@@ -37,6 +38,11 @@ public partial class MainWindow : Window
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly ImagePreloader _imagePreloader = new();
     private readonly VideoFrameExtractor _videoFrameExtractor = new();
+    private readonly PlaylistManager _playlistManager = new(new FilePlaylistStore());
+    private readonly ConcurrentDictionary<string, MediaItem> _discoveredItems =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _favoritePaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _activePlaylistPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _controlsTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _videoProgressTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly DispatcherTimer _videoPreviewTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
@@ -76,11 +82,17 @@ public partial class MainWindow : Window
         _kenBurnsAnimations = [];
     private readonly Dictionary<string, BitmapSource> _previewThumbnails =
         new(StringComparer.OrdinalIgnoreCase);
+    private PlaylistIpcServer? _playlistIpcServer;
+    private string? _activePlaylistId;
+    private PlaylistEndMode _activePlaylistEndMode;
+    private bool _updatingPlaylistUi;
+    private bool _playlistWaitingForNext;
 
     public MainWindow(string[] args, UpdateManager? updateManager = null)
     {
         InitializeComponent();
         _updateManager = updateManager;
+        _playlistIpcServer = new PlaylistIpcServer(_playlistManager, () => _discoveredItems.Values);
         _requestedPath = args.FirstOrDefault();
         _controlsTimer.Tick += (_, _) =>
         {
@@ -166,6 +178,11 @@ public partial class MainWindow : Window
         _settings.LastFolder = folder;
         _rootFolder = folder;
         _settings.Save();
+        _activePlaylistId = null;
+        _playlistWaitingForNext = false;
+        _activePlaylistPaths.Clear();
+        _favoritePaths.Clear();
+        _discoveredItems.Clear();
         _folderMonitor?.Dispose();
         _folderMonitor = new MediaFolderMonitor(folder);
         _folderMonitor.MediaAdded += FolderMonitor_MediaAdded;
@@ -175,6 +192,10 @@ public partial class MainWindow : Window
         _previewGeneration++;
         var playlist = new Playlist([], _settings.Order, _settings.MediaFilter, _settings.Direction);
         _playlist = playlist;
+        await Task.Run(() => _playlistManager.LoadFolder(folder)).ConfigureAwait(true);
+        if (scanCancellation.IsCancellationRequested)
+            return;
+        await RefreshPlaylistPanelAsync();
         UpdateQueuePreview();
         ImageView.Source = null;
         StopVideoProgress();
@@ -189,18 +210,21 @@ public partial class MainWindow : Window
             if (scanCancellation.IsCancellationRequested)
                 return;
             pending.Add(item);
+            _discoveredItems[item.Path] = item;
             var isRequestedItem = startFile is not null &&
                 string.Equals(item.Path, startFile, StringComparison.OrdinalIgnoreCase);
             if (!started && (startFile is null || isRequestedItem))
             {
                 var initialItems = pending.ToArray();
                 pending.Clear();
+                var matches = await GetPlaylistMatchesAsync(initialItems);
                 var first = await Dispatcher.InvokeAsync(() =>
                 {
                     if (_playlist != playlist || scanCancellation.IsCancellationRequested)
                         return null;
 
                     playlist.AddItems(initialItems);
+                    ApplyPlaylistMatches(playlist, matches);
                     UpdateItemCounter();
                     return startFile is null ? playlist.StartAt(item.Path) : playlist.StartAt(startFile);
                 });
@@ -218,12 +242,14 @@ public partial class MainWindow : Window
             {
                 var batch = pending.ToArray();
                 pending.Clear();
+                var matches = await GetPlaylistMatchesAsync(batch);
                 await Dispatcher.InvokeAsync(() =>
                 {
                     if (_playlist != playlist || scanCancellation.IsCancellationRequested)
                         return;
 
                     playlist.AddItems(batch);
+                    ApplyPlaylistMatches(playlist, matches);
                     UpdateItemCounter();
                     RequestQueuePreviewUpdate();
                 });
@@ -235,24 +261,32 @@ public partial class MainWindow : Window
         if (pending.Count > 0)
         {
             var batch = pending.ToArray();
+            var matches = await GetPlaylistMatchesAsync(batch);
             await Dispatcher.InvokeAsync(() =>
             {
                 if (_playlist != playlist || scanCancellation.IsCancellationRequested)
                     return;
 
                 playlist.AddItems(batch);
+                ApplyPlaylistMatches(playlist, matches);
                 UpdateItemCounter();
                 RequestQueuePreviewUpdate();
             });
         }
         if (!started)
         {
-            var first = await Dispatcher.InvokeAsync(() =>
+            var (first, activePlaylist) = await Dispatcher.InvokeAsync(() =>
             {
                 if (_playlist != playlist || scanCancellation.IsCancellationRequested)
-                    return null;
+                    return ((MediaItem?)null, _activePlaylistId is not null);
 
-                return startFile is null ? playlist.StartRandom() : playlist.StartAt(startFile);
+                var active = _activePlaylistId is not null;
+                var item = active
+                    ? playlist.Current is null ? playlist.Next() : null
+                    : startFile is null ? playlist.StartRandom() : playlist.StartAt(startFile);
+                if (active)
+                    _playlistWaitingForNext = item is null;
+                return (item, active);
             });
             if (first is not null)
             {
@@ -262,34 +296,525 @@ public partial class MainWindow : Window
                     ShowItem(first);
                 });
             }
-            else
+            else if (!activePlaylist)
                 await Dispatcher.InvokeAsync(() => ShowMessage("NoMediaMessage"));
         }
+        if (!scanCancellation.IsCancellationRequested)
+            await Task.Run(() => _playlistManager.CompleteScan(folder));
+        if (!scanCancellation.IsCancellationRequested)
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (_playlist != playlist || _activePlaylistId is null)
+                    return;
+                playlist.SetActivePlaylist(
+                    _activePlaylistPaths,
+                    _activePlaylistEndMode,
+                    resetHistory: false,
+                    scanComplete: true);
+                if (_playlistWaitingForNext && playlist.Next() is { } next)
+                {
+                    _playlistWaitingForNext = false;
+                    EmptyState.Visibility = Visibility.Collapsed;
+                    ShowItem(next);
+                }
+            });
+        }
+        await RefreshPlaylistPanelAsync();
     }
 
-    private void FolderMonitor_MediaAdded(MediaItem item) =>
-        Dispatcher.BeginInvoke(() =>
+    private void FolderMonitor_MediaAdded(MediaItem item) => _ = AddDiscoveredMediaAsync(item);
+
+    private async Task AddDiscoveredMediaAsync(MediaItem item)
+    {
+        if (!File.Exists(item.Path))
+            return;
+        var matches = await GetPlaylistMatchesAsync([item]);
+        await Dispatcher.InvokeAsync(() =>
         {
-            if (_playlist is null || !File.Exists(item.Path))
+            if (_playlist is null || _rootFolder is null)
                 return;
+            if (!PlaylistPathIdentity.TryGetRelativePath(_rootFolder, item.Path, out _))
+                return;
+            _discoveredItems[item.Path] = item;
             _playlist.AddItems([item]);
+            ApplyPlaylistMatches(_playlist, matches);
             UpdateItemCounter();
             UpdateQueuePreview();
             PreloadUpcoming();
+            UpdateFavoriteToggle(_playlist.Current);
+            _ = RefreshPlaylistPanelAsync();
         });
+    }
 
     private void FolderMonitor_MediaRemoved(string path) =>
         Dispatcher.BeginInvoke(() =>
         {
             if (_playlist is null)
                 return;
+            if (_rootFolder is null ||
+                !PlaylistPathIdentity.TryGetRelativePath(_rootFolder, path, out _))
+                return;
+            _discoveredItems.TryRemove(path, out _);
+            _favoritePaths.Remove(path);
+            _activePlaylistPaths.Remove(path);
+            if (_activePlaylistId is not null)
+                _playlist.SetActivePlaylist(
+                    _activePlaylistPaths,
+                    _activePlaylistEndMode,
+                    resetHistory: false,
+                    scanComplete: _playlistManager.IsScanComplete);
             var currentRemoved = _playlist.RemoveItems([path]);
             _imagePreloader.Clear();
             UpdateItemCounter();
             UpdateQueuePreview();
+            UpdateFavoriteToggle(_playlist.Current);
+            _ = RefreshPlaylistPanelAsync();
             if (currentRemoved)
                 GoNext();
         });
+
+    private async Task<(HashSet<string> Favorites, string? ActiveId, HashSet<string> ActivePaths,
+        PlaylistEndMode EndMode, string? Root)> GetPlaylistMatchesAsync(IEnumerable<MediaItem> items)
+    {
+        var batch = items.ToArray();
+        var active = await Dispatcher.InvokeAsync(() =>
+            (_activePlaylistId, _activePlaylistEndMode, _rootFolder));
+        if (active._rootFolder is null)
+            return ([], null, [], active._activePlaylistEndMode, null);
+
+        var favorites = await Task.Run(() =>
+            _playlistManager.GetPlayablePaths(active._rootFolder, PlaylistManager.FavoriteId, batch));
+        var activePaths = active._activePlaylistId is null
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : await Task.Run(() =>
+                _playlistManager.GetPlayablePaths(active._rootFolder, active._activePlaylistId, batch));
+        return (favorites, active._activePlaylistId, activePaths, active._activePlaylistEndMode,
+            active._rootFolder);
+    }
+
+    private void ApplyPlaylistMatches(
+        Playlist playlist,
+        (HashSet<string> Favorites, string? ActiveId, HashSet<string> ActivePaths,
+            PlaylistEndMode EndMode, string? Root) matches)
+    {
+        if (matches.Root is null || !string.Equals(matches.Root, _rootFolder, StringComparison.OrdinalIgnoreCase))
+            return;
+        _favoritePaths.UnionWith(matches.Favorites);
+        if (matches.ActiveId is not null && matches.ActiveId == _activePlaylistId)
+        {
+            _activePlaylistPaths.UnionWith(matches.ActivePaths);
+            _activePlaylistEndMode = matches.EndMode;
+            playlist.SetActivePlaylist(
+                _activePlaylistPaths,
+                _activePlaylistEndMode,
+                resetHistory: false,
+                scanComplete: _playlistManager.IsScanComplete);
+            if (_playlistWaitingForNext && playlist.Next() is { } first)
+            {
+                _playlistWaitingForNext = false;
+                EmptyState.Visibility = Visibility.Collapsed;
+                ShowItem(first);
+            }
+        }
+        UpdateFavoriteToggle(playlist.Current);
+    }
+
+    private async Task RefreshPlaylistPanelAsync()
+    {
+        var root = _playlistManager.CurrentFolder;
+        if (root is null)
+            return;
+        var views = await Task.Run(() =>
+        {
+            var items = _discoveredItems.Values.ToArray();
+            return _playlistManager.List(root, items);
+        });
+        if (!string.Equals(root, _playlistManager.CurrentFolder, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _updatingPlaylistUi = true;
+        try
+        {
+            var selectedId = _activePlaylistId ?? (PlaylistList.SelectedItem as PlaylistView)?.Id;
+            PlaylistList.ItemsSource = views;
+            PlaylistList.SelectedValue = views.Any(view => view.Id == selectedId)
+                ? selectedId
+                : PlaylistManager.FavoriteId;
+            PlaylistList.SetValue(AutomationProperties.NameProperty, Localization.Get("Playlists"));
+            PlaylistNameBox.SetValue(AutomationProperties.NameProperty, Localization.Get("PlaylistName"));
+            PlaylistEndModeBox.SetValue(
+                AutomationProperties.NameProperty, Localization.Get("PlaylistEndMode"));
+            ApiCapabilityBox.SetValue(AutomationProperties.NameProperty, Localization.Get("ApiAccessKey"));
+            UpdatePlaylistSelectionUi();
+            var active = views.FirstOrDefault(view => view.Id == _activePlaylistId);
+            _activePlaylistName = active?.Name;
+            UpdateActivePlaylistIndicator();
+        }
+        finally
+        {
+            _updatingPlaylistUi = false;
+        }
+    }
+
+    private string? _activePlaylistName;
+
+    private PlaylistView? SelectedPlaylist => PlaylistList.SelectedItem as PlaylistView;
+
+    private void UpdatePlaylistSelectionUi()
+    {
+        var selected = SelectedPlaylist;
+        PlaylistNameBox.Text = selected is { IsFavorite: false } ? selected.Name : string.Empty;
+        RenamePlaylistButton.IsEnabled = selected is { IsFavorite: false };
+        DeletePlaylistButton.IsEnabled = selected is { IsFavorite: false };
+        CleanupStaleEntriesButton.IsEnabled = selected is not null && _playlistManager.IsScanComplete;
+        ActivatePlaylistButton.IsEnabled = selected is not null;
+        PlaylistEndModeBox.IsEnabled = selected is { IsFavorite: false };
+        SharePlaylistBox.IsEnabled = selected is { IsFavorite: false };
+        PlaylistEndModeBox.SelectedIndex = selected?.EndMode == PlaylistEndMode.AppendNonPlaylistItems ? 1 : 0;
+        SharePlaylistBox.IsChecked = selected?.SharedWithClients == true;
+    }
+
+    private void UpdateActivePlaylistIndicator()
+    {
+        ActivePlaylistIndicator.Text = _activePlaylistId is null || _activePlaylistName is null
+            ? string.Empty
+            : Localization.Get("ActivePlaylist", _activePlaylistName);
+        ActivePlaylistIndicator.Visibility = _activePlaylistId is null
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        AutomationProperties.SetName(
+            ActivePlaylistIndicator,
+            _activePlaylistId is null || _activePlaylistName is null
+                ? string.Empty
+                : Localization.Get("ActivePlaylist", _activePlaylistName));
+    }
+
+    private void UpdateFavoriteToggle(MediaItem? item)
+    {
+        FavoriteToggle.IsEnabled = item is not null;
+        var isFavorite = item is not null && _favoritePaths.Contains(item.Path);
+        FavoriteToggle.IsChecked = isFavorite;
+        var name = Localization.Get(isFavorite ? "FavoriteOnAutomation" : "FavoriteOffAutomation");
+        FavoriteToggle.ToolTip = name;
+        AutomationProperties.SetName(FavoriteToggle, name);
+    }
+
+    private async Task ActivatePlaylistAsync(PlaylistView? selected)
+    {
+        if (selected is null || _playlist is null || _rootFolder is null)
+            return;
+
+        var root = _rootFolder;
+        var paths = await Task.Run(() =>
+            _playlistManager.GetPlayablePaths(root, selected.Id, _discoveredItems.Values));
+        if (_playlist is null || !string.Equals(root, _rootFolder, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _activePlaylistId = selected.Id;
+        _activePlaylistName = selected.Name;
+        _activePlaylistEndMode = selected.EndMode;
+        _playlistWaitingForNext = false;
+        _activePlaylistPaths.Clear();
+        _activePlaylistPaths.UnionWith(paths);
+        _playlist.SetActivePlaylist(
+            _activePlaylistPaths,
+            _activePlaylistEndMode,
+            scanComplete: _playlistManager.IsScanComplete);
+        UpdateActivePlaylistIndicator();
+        UpdateItemCounter();
+        UpdateQueuePreview();
+        if (_playlist.Next() is { } first)
+        {
+            _playlistWaitingForNext = false;
+            EmptyState.Visibility = Visibility.Collapsed;
+            ShowItem(first);
+        }
+        else
+        {
+            _playlistWaitingForNext = true;
+            ShowMessage("PlaylistEmpty");
+        }
+        PreloadUpcoming();
+    }
+
+    private async void NewPlaylist_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var name = PlaylistNameBox.Text;
+            var mode = SelectedPlaylistEndMode();
+            var id = await Task.Run(() => _playlistManager.Create(name, mode));
+            await RefreshPlaylistPanelAsync();
+            PlaylistList.SelectedValue = id;
+        }
+        catch (PlaylistRequestException)
+        {
+            ApiCapabilityStatus.Text = Localization.Get("PlaylistOperationFailed");
+        }
+    }
+
+    private async void PreviewFavoriteToggle_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is ToggleButton { Tag: MediaItem item, IsChecked: { } isFavorite } &&
+            _rootFolder is { } root)
+            await SetFavoriteAsync(root, item, isFavorite);
+    }
+
+    private async void RenamePlaylist_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedPlaylist is not { IsFavorite: false } selected)
+            return;
+        try
+        {
+            await Task.Run(() => _playlistManager.Rename(selected.Id, PlaylistNameBox.Text));
+            await RefreshPlaylistPanelAsync();
+        }
+        catch (PlaylistRequestException)
+        {
+            ApiCapabilityStatus.Text = Localization.Get("PlaylistOperationFailed");
+        }
+    }
+
+    private async void DeletePlaylist_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedPlaylist is not { IsFavorite: false } selected)
+            return;
+        try
+        {
+            await Task.Run(() => _playlistManager.Delete(selected.Id));
+            if (_activePlaylistId == selected.Id)
+            {
+                _activePlaylistId = null;
+                _playlistWaitingForNext = false;
+                _activePlaylistName = null;
+                _activePlaylistPaths.Clear();
+                _playlist?.ClearActivePlaylist();
+                UpdateActivePlaylistIndicator();
+                if (_playlist?.Next() is { } first)
+                    ShowItem(first);
+            }
+            await RefreshPlaylistPanelAsync();
+        }
+        catch (PlaylistRequestException)
+        {
+            ApiCapabilityStatus.Text = Localization.Get("PlaylistOperationFailed");
+        }
+    }
+
+    private async void CleanupStaleEntries_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedPlaylist is not { } selected)
+            return;
+        try
+        {
+            var items = _discoveredItems.Values.ToArray();
+            await Task.Run(() => _playlistManager.CleanupStale(selected.Id, items));
+            if (_activePlaylistId == selected.Id && _rootFolder is { } root)
+            {
+                var paths = await Task.Run(() =>
+                    _playlistManager.GetPlayablePaths(root, selected.Id, items));
+                _activePlaylistPaths.Clear();
+                _activePlaylistPaths.UnionWith(paths);
+                _playlist?.SetActivePlaylist(
+                    _activePlaylistPaths,
+                    _activePlaylistEndMode,
+                    resetHistory: false,
+                    scanComplete: _playlistManager.IsScanComplete);
+                if (_playlist?.Current is { } current && !_activePlaylistPaths.Contains(current.Path))
+                    GoNext();
+            }
+            await RefreshPlaylistPanelAsync();
+        }
+        catch (PlaylistRequestException)
+        {
+            ApiCapabilityStatus.Text = Localization.Get("PlaylistOperationFailed");
+        }
+    }
+
+    private async void ActivatePlaylist_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await ActivatePlaylistAsync(SelectedPlaylist);
+        }
+        catch (PlaylistRequestException)
+        {
+            ApiCapabilityStatus.Text = Localization.Get("PlaylistOperationFailed");
+        }
+    }
+
+    private async void PlaylistEndModeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingPlaylistUi || SelectedPlaylist is not { IsFavorite: false } selected)
+            return;
+        var mode = SelectedPlaylistEndMode();
+        try
+        {
+            await Task.Run(() => _playlistManager.SetEndMode(selected.Id, mode));
+            if (_activePlaylistId == selected.Id)
+            {
+                _activePlaylistEndMode = mode;
+                _playlist?.SetActivePlaylist(
+                    _activePlaylistPaths,
+                    mode,
+                    resetHistory: false,
+                    scanComplete: _playlistManager.IsScanComplete);
+            }
+            await RefreshPlaylistPanelAsync();
+        }
+        catch (PlaylistRequestException)
+        {
+            ApiCapabilityStatus.Text = Localization.Get("PlaylistOperationFailed");
+        }
+    }
+
+    private async void SharePlaylistBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_updatingPlaylistUi || SelectedPlaylist is not { IsFavorite: false } selected)
+            return;
+        try
+        {
+            var shared = SharePlaylistBox.IsChecked == true;
+            await Task.Run(() => _playlistManager.SetShared(selected.Id, shared));
+            await RefreshPlaylistPanelAsync();
+        }
+        catch (PlaylistRequestException)
+        {
+            ApiCapabilityStatus.Text = Localization.Get("PlaylistOperationFailed");
+        }
+    }
+
+    private async void FavoriteToggle_Click(object sender, RoutedEventArgs e) =>
+        await SetCurrentFavoriteAsync(FavoriteToggle.IsChecked == true);
+
+    private void ToggleFavorite()
+    {
+        if (_playlist?.Current is not { } current)
+            return;
+        var target = !_favoritePaths.Contains(current.Path);
+        FavoriteToggle.IsChecked = target;
+        _ = SetCurrentFavoriteAsync(target);
+    }
+
+    private async Task SetCurrentFavoriteAsync(bool isFavorite)
+    {
+        if (_playlist?.Current is not { } current || _rootFolder is not { } root)
+            return;
+        await SetFavoriteAsync(root, current, isFavorite);
+    }
+
+    private async Task SetFavoriteAsync(string root, MediaItem item, bool isFavorite)
+    {
+        try
+        {
+            await Task.Run(() => _playlistManager.SetFavorite(root, item.Path, isFavorite));
+            if (!string.Equals(root, _rootFolder, StringComparison.OrdinalIgnoreCase) ||
+                _playlist is not { } currentPlaylist)
+                return;
+            if (isFavorite)
+                _favoritePaths.Add(item.Path);
+            else
+                _favoritePaths.Remove(item.Path);
+            if (_activePlaylistId == PlaylistManager.FavoriteId)
+            {
+                if (isFavorite)
+                    _activePlaylistPaths.Add(item.Path);
+                else
+                    _activePlaylistPaths.Remove(item.Path);
+                currentPlaylist.SetActivePlaylist(
+                    _activePlaylistPaths,
+                    _activePlaylistEndMode,
+                    resetHistory: false,
+                    scanComplete: _playlistManager.IsScanComplete);
+                if (!isFavorite && currentPlaylist.Current?.Path == item.Path)
+                    GoNext();
+                else if (_playlistWaitingForNext && currentPlaylist.Next() is { } next)
+                {
+                    _playlistWaitingForNext = false;
+                    ShowItem(next);
+                }
+            }
+            UpdateFavoriteToggle(currentPlaylist.Current);
+            UpdateQueuePreview();
+            await RefreshPlaylistPanelAsync();
+        }
+        catch (PlaylistRequestException)
+        {
+            UpdateFavoriteToggle(_playlist?.Current);
+            ApiCapabilityStatus.Text = Localization.Get("PlaylistOperationFailed");
+        }
+    }
+
+    private PlaylistEndMode SelectedPlaylistEndMode() =>
+        PlaylistEndModeBox.SelectedIndex == 1
+            ? PlaylistEndMode.AppendNonPlaylistItems
+            : PlaylistEndMode.LoopPlaylist;
+
+    private void PlaylistPanelButton_Click(object sender, RoutedEventArgs e)
+    {
+        PlaylistPanel.Visibility = PlaylistPanel.Visibility == Visibility.Visible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        SettingsPanel.Visibility = Visibility.Collapsed;
+        ShowControls();
+    }
+
+    private void ClosePlaylistPanel_Click(object sender, RoutedEventArgs e) =>
+        PlaylistPanel.Visibility = Visibility.Collapsed;
+
+    private void PlaylistList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingPlaylistUi)
+            return;
+        _updatingPlaylistUi = true;
+        try
+        {
+            UpdatePlaylistSelectionUi();
+        }
+        finally
+        {
+            _updatingPlaylistUi = false;
+        }
+    }
+
+    private void GenerateApiCapability_Click(object sender, RoutedEventArgs e)
+    {
+        if (_playlistIpcServer is null)
+            return;
+        try
+        {
+            var issued = _playlistIpcServer.IssueCapability();
+            ApiCapabilityBox.Text = issued.Capability;
+            ApiCapabilityBox.Visibility = Visibility.Visible;
+            ApiCapabilityBox.SetValue(AutomationProperties.NameProperty, Localization.Get("ApiAccessKey"));
+            try
+            {
+                System.Windows.Clipboard.SetText(issued.Capability);
+            }
+            catch (System.Runtime.InteropServices.ExternalException)
+            {
+            }
+            ApiCapabilityStatus.Text = Localization.Get("ApiCapabilityIssued");
+        }
+        catch (PlaylistRequestException)
+        {
+            ApiCapabilityStatus.Text = Localization.Get("PlaylistOperationFailed");
+        }
+    }
+
+    private void RevokeApiCapabilities_Click(object sender, RoutedEventArgs e)
+    {
+        _playlistIpcServer?.RevokeCapabilities();
+        ApiCapabilityBox.Clear();
+        ApiCapabilityBox.Visibility = Visibility.Collapsed;
+        ApiCapabilityStatus.Text = Localization.Get("ApiCapabilitiesRevoked");
+    }
+
+    private static bool IsEditableControlFocused() =>
+        Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or PasswordBox ||
+        Keyboard.FocusedElement is System.Windows.Controls.ComboBox { IsEditable: true };
 
     private async void ShowItem(MediaItem item, bool preservePlaybackState = false)
     {
@@ -546,6 +1071,8 @@ public partial class MainWindow : Window
         QueuePreviewItems.Children.Clear();
         var generation = ++_previewGeneration;
         UpdateQueueToggleButton();
+        UpdateActivePlaylistIndicator();
+        UpdateFavoriteToggle(_playlist?.Current);
         if (!_settings.QueuePreviewVisible)
         {
             QueuePreviewPanel.Visibility = Visibility.Collapsed;
@@ -647,6 +1174,29 @@ public partial class MainWindow : Window
                 VerticalAlignment = VerticalAlignment.Center,
                 IsHitTestVisible = false
             });
+        var favoriteToggle = new ToggleButton
+        {
+            Content = "\uE734",
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 14,
+            Foreground = WpfBrushes.White,
+            Background = new SolidColorBrush(Color.FromArgb(0xCC, 0x18, 0x18, 0x20)),
+            BorderThickness = new Thickness(0),
+            Width = 24,
+            Height = 24,
+            IsChecked = _favoritePaths.Contains(item.Path),
+            Tag = item,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Focusable = true
+        };
+        AutomationProperties.SetName(
+            favoriteToggle,
+            Localization.Get(_favoritePaths.Contains(item.Path)
+                ? "FavoriteOnAutomation"
+                : "FavoriteOffAutomation"));
+        favoriteToggle.Click += PreviewFavoriteToggle_Click;
+        content.Children.Add(favoriteToggle);
 
         var baseBorderBrush = selected
             ? WpfBrushes.White
@@ -794,10 +1344,13 @@ public partial class MainWindow : Window
     {
         if (_playlist?.Next() is { } next)
         {
+            _playlistWaitingForNext = false;
             ShowItem(next);
             return;
         }
 
+        if (_playlist?.IsPlaylistActive == true)
+            _playlistWaitingForNext = true;
         StopGif();
         StopVideoProgress();
         VideoView.Stop();
@@ -806,7 +1359,7 @@ public partial class MainWindow : Window
         ImageView.Source = null;
         ImageView.Visibility = Visibility.Collapsed;
         VideoView.Visibility = Visibility.Collapsed;
-        ShowMessage("NoMediaMessage");
+        ShowMessage(_playlist?.IsPlaylistActive == true ? "PlaylistEmpty" : "NoMediaMessage");
     }
 
     private void GoPrevious()
@@ -849,6 +1402,12 @@ public partial class MainWindow : Window
         if (_playlist?.Current is { } current &&
             !IsIncluded(current.Kind, _settings.MediaFilter))
             GoNext();
+        else if (_playlistWaitingForNext && _playlist?.Next() is { } next)
+        {
+            _playlistWaitingForNext = false;
+            EmptyState.Visibility = Visibility.Collapsed;
+            ShowItem(next);
+        }
     }
 
     private void SetFullscreen(bool enabled)
@@ -1101,6 +1660,29 @@ public partial class MainWindow : Window
         CloseShortcut.Text = Localization.Get("CloseSettings");
         RevealShortcut.Text = Localization.Get("RevealCurrent");
         QueuePreviewShortcut.Text = Localization.Get("ToggleQueuePreview");
+        FavoriteShortcut.Text = Localization.Get("FavoriteShortcut");
+        PlaylistPanelTitle.Text = Localization.Get("Playlists");
+        PlaylistNameLabel.Text = Localization.Get("PlaylistName");
+        NewPlaylistButton.Content = Localization.Get("NewPlaylist");
+        RenamePlaylistButton.Content = Localization.Get("RenamePlaylist");
+        DeletePlaylistButton.Content = Localization.Get("DeletePlaylist");
+        CleanupStaleEntriesButton.Content = Localization.Get("CleanupStaleEntries");
+        ActivatePlaylistButton.Content = Localization.Get("ActivatePlaylist");
+        PlaylistEndModeLabel.Text = Localization.Get("PlaylistEndMode");
+        LoopPlaylistItem.Content = Localization.Get("LoopPlaylist");
+        AppendNonPlaylistItemsItem.Content = Localization.Get("AppendNonPlaylistItems");
+        SharePlaylistBox.Content = Localization.Get("SharePlaylist");
+        ApiAccessLabel.Text = Localization.Get("ApiAccess");
+        GenerateApiCapabilityButton.Content = Localization.Get("GenerateApiCapability");
+        RevokeApiCapabilitiesButton.Content = Localization.Get("RevokeApiCapabilities");
+        ClosePlaylistPanelButton.Content = Localization.Get("Close");
+        PlaylistPanelButton.ToolTip = Localization.Get("Playlists");
+        AutomationProperties.SetName(PlaylistPanelButton, Localization.Get("Playlists"));
+        PlaylistList.SetValue(AutomationProperties.NameProperty, Localization.Get("Playlists"));
+        PlaylistNameBox.SetValue(AutomationProperties.NameProperty, Localization.Get("PlaylistName"));
+        PlaylistEndModeBox.SetValue(
+            AutomationProperties.NameProperty, Localization.Get("PlaylistEndMode"));
+        ApiCapabilityBox.SetValue(AutomationProperties.NameProperty, Localization.Get("ApiAccessKey"));
         AccessToastDismissHint.Text = Localization.Get("PressToDismiss");
         AccessToast.SetValue(AutomationProperties.NameProperty, Localization.Get("DismissFileError"));
         VideoProgress.ToolTip = Localization.Get("VideoPosition");
@@ -1118,6 +1700,8 @@ public partial class MainWindow : Window
         SetButtonIcon(PauseButton, _paused ? "\uE768" : "\uE769",
             Localization.Get(_paused ? "Resume" : "Pause"));
         UpdateQueueToggleButton();
+        UpdateActivePlaylistIndicator();
+        UpdateFavoriteToggle(_playlist?.Current);
         if (_emptyMessageKey is not null)
             EmptyMessage.Text = Localization.Get(_emptyMessageKey);
         LanguageBox.SelectedIndex = Localization.Current switch
@@ -1241,6 +1825,13 @@ public partial class MainWindow : Window
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Shift &&
+            !IsEditableControlFocused())
+        {
+            ToggleFavorite();
+            e.Handled = true;
+            return;
+        }
         if (e.OriginalSource is Button && e.Key is not (Key.Left or Key.Right or Key.Q))
             return;
         switch (e.Key)
@@ -1248,13 +1839,18 @@ public partial class MainWindow : Window
             case Key.Space: TogglePause(); break;
             case Key.Right: GoNext(); break;
             case Key.Left: GoPrevious(); break;
-            case Key.F: SetFullscreen(WindowStyle != WindowStyle.None); break;
+            case Key.F when Keyboard.Modifiers == ModifierKeys.None:
+                SetFullscreen(WindowStyle != WindowStyle.None);
+                break;
             case Key.V: ToggleMediaFilter(); break;
             case Key.M: ToggleAudio(); break;
             case Key.E: RevealCurrentInExplorer(); break;
             case Key.Q: ToggleQueuePreview(); break;
             case Key.Escape:
-                if (SettingsPanel.Visibility == Visibility.Visible) SettingsPanel.Visibility = Visibility.Collapsed;
+                if (PlaylistPanel.Visibility == Visibility.Visible)
+                    PlaylistPanel.Visibility = Visibility.Collapsed;
+                else if (SettingsPanel.Visibility == Visibility.Visible)
+                    SettingsPanel.Visibility = Visibility.Collapsed;
                 else if (WindowStyle == WindowStyle.None) SetFullscreen(false);
                 break;
         }
@@ -1605,8 +2201,15 @@ public partial class MainWindow : Window
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e) =>
+        ToggleSettingsPanel();
+
+    private void ToggleSettingsPanel()
+    {
         SettingsPanel.Visibility = SettingsPanel.Visibility == Visibility.Visible
-            ? Visibility.Collapsed : Visibility.Visible;
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        PlaylistPanel.Visibility = Visibility.Collapsed;
+    }
 
     private void QueueToggle_Click(object sender, RoutedEventArgs e) => ToggleQueuePreview();
 
@@ -1667,6 +2270,7 @@ public partial class MainWindow : Window
         Localization.SetLanguage(_settings.Language);
         _settings.Save();
         ApplyLocalization();
+        _ = RefreshPlaylistPanelAsync();
     }
 
     private void SaveSettingsFromUi()
@@ -1710,6 +2314,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == Forms.DialogResult.OK)
         {
             SettingsPanel.Visibility = Visibility.Collapsed;
+            PlaylistPanel.Visibility = Visibility.Collapsed;
             _ = LoadFolderAsync(dialog.SelectedPath, null);
         }
     }
@@ -1726,6 +2331,8 @@ public partial class MainWindow : Window
         _videoPreviewPrefetchCancellation?.Cancel();
         _folderMonitor?.Dispose();
         _folderMonitor = null;
+        _playlistIpcServer?.Dispose();
+        _playlistIpcServer = null;
         StopGif();
         StopVideoProgress();
         VideoView.Stop();

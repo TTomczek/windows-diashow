@@ -311,4 +311,101 @@ public sealed class PlaylistTests
         Assert.Null(playlist.Next());
         Assert.Null(playlist.StartRandom());
     }
+
+    [Fact]
+    public void Active_playlist_loops_only_its_members()
+    {
+        var playlist = new Playlist(
+            [Image("a.jpg"), Image("b.jpg"), Image("c.jpg")],
+            PlaybackOrder.Filename,
+            includeVideos: true);
+
+        playlist.SetActivePlaylist(["a.jpg", "c.jpg"]);
+
+        Assert.Equal(2, playlist.TotalCount);
+        Assert.Equal(["a.jpg", "c.jpg", "a.jpg"],
+            Enumerable.Range(0, 3).Select(_ => playlist.Next()!.Path));
+    }
+
+    [Fact]
+    public void Append_mode_plays_nonmembers_once_before_normal_folder_loop()
+    {
+        var playlist = new Playlist(
+            [Image("a.jpg"), Image("b.jpg"), Image("c.jpg"), Image("d.jpg")],
+            PlaybackOrder.Filename,
+            includeVideos: true);
+
+        playlist.SetActivePlaylist(
+            ["a.jpg", "c.jpg"],
+            PlaylistEndMode.AppendNonPlaylistItems);
+
+        Assert.Equal(
+            ["a.jpg", "c.jpg", "b.jpg", "d.jpg", "a.jpg"],
+            Enumerable.Range(0, 5).Select(_ => playlist.Next()!.Path));
+    }
+
+    [Fact]
+    public void Active_playlist_incorporates_later_discovered_members()
+    {
+        var playlist = new Playlist([Image("a.jpg")], PlaybackOrder.Filename, includeVideos: true);
+        playlist.SetActivePlaylist(["a.jpg"]);
+        Assert.Equal("a.jpg", playlist.Next()!.Path);
+
+        playlist.AddItems([Image("b.jpg"), Image("outside.jpg")]);
+        playlist.SetActivePlaylist(["a.jpg", "b.jpg"], resetHistory: false);
+
+        Assert.Equal("b.jpg", playlist.Next()!.Path);
+        Assert.Equal(2, playlist.CurrentPosition);
+    }
+
+    [Fact]
+    public void Active_playlist_respects_media_filter_and_reports_empty_queue()
+    {
+        var playlist = new Playlist(
+            [Image("a.jpg"), Video("b.mp4")],
+            PlaybackOrder.Filename,
+            MediaFilter.Images);
+        playlist.SetActivePlaylist(["b.mp4"]);
+
+        Assert.True(playlist.IsPlaylistActive);
+        Assert.Equal(0, playlist.TotalCount);
+        Assert.Null(playlist.Next());
+    }
+
+    [Fact]
+    public void Append_mode_waits_for_scan_and_never_falls_back_when_playlist_is_empty()
+    {
+        var playlist = new Playlist(
+            [Image("folder-item.jpg")],
+            PlaybackOrder.Filename,
+            includeVideos: true);
+        playlist.SetActivePlaylist(
+            [],
+            PlaylistEndMode.AppendNonPlaylistItems,
+            scanComplete: false);
+
+        Assert.Null(playlist.Next());
+
+        playlist.AddItems([Image("member-a.jpg"), Image("member-b.jpg")]);
+        playlist.SetActivePlaylist(
+            ["member-a.jpg", "member-b.jpg"],
+            PlaylistEndMode.AppendNonPlaylistItems,
+            resetHistory: false,
+            scanComplete: false);
+        Assert.Equal("member-a.jpg", playlist.Next()!.Path);
+        Assert.Equal("member-b.jpg", playlist.Next()!.Path);
+        Assert.Null(playlist.Next());
+
+        playlist.SetActivePlaylist(
+            ["member-a.jpg", "member-b.jpg"],
+            PlaylistEndMode.AppendNonPlaylistItems,
+            resetHistory: false,
+            scanComplete: true);
+        Assert.Equal("folder-item.jpg", playlist.Next()!.Path);
+
+        playlist.SetActivePlaylist(
+            [],
+            PlaylistEndMode.AppendNonPlaylistItems);
+        Assert.Null(playlist.Next());
+    }
 }

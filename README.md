@@ -8,6 +8,7 @@ A focused, keyboard-friendly slideshow for Windows. Diashow plays images and vid
 
 - Displays images and videos in a single, distraction-free viewer
 - Discovers media recursively and updates the playlist when files are added, removed, or renamed
+- Saves folder-specific Favorites and named playlists, with playlist-only or append-folder playback
 - Supports filename, creation-date, or random playback order with ascending or descending sorting
 - Filters playback to images, videos, or both
 - Plays animated GIFs and supports common image formats such as JPEG, PNG, BMP, TIFF, WebP, and HEIC
@@ -16,6 +17,7 @@ A focused, keyboard-friendly slideshow for Windows. Diashow plays images and vid
 - Previous/next navigation, video seeking, mute/unmute, and reveal-in-Explorer actions
 - English, German, and Spanish interface translations
 - Remembers the last folder and playback settings
+- Offers a local, capability-protected named-pipe API for custom playlist management
 - Optional Windows Explorer context-menu and Start-menu integration through the installer
 
 ## Installation
@@ -55,6 +57,31 @@ Move the mouse to reveal the playback controls. The settings panel lets you conf
 
 The media filter button cycles between images only, videos only, and both. Settings are stored in `%APPDATA%\diashow\settings.json`.
 
+### Persisted playlists
+
+Open **Playlists** in the playback controls to manage the currently scanned folder. **Favorite** is always available, and the star toggle on the current item and queue thumbnails adds or removes it. Custom playlists can be created, renamed, deleted, and activated; each can loop its members or append the remaining folder items once. Active playlists continue to honor the global media filter and show an explicit empty state when no members match.
+
+Playlist data is kept separately in `%LOCALAPPDATA%\Diashow\playlists.json`. The versioned store keeps playlist display names in plaintext, but stores folder and relative-file identities as version-prefixed SHA-256 hashes, along with file metadata for stale detection. Missing or changed files remain as stale entries until **Remove stale entries** is used. The store uses atomic replacement, a cross-process mutex, and current-user-only Windows ACLs.
+
+### Local playlist API
+
+The app exposes `\\.\pipe\Diashow.Playlists.v1` to processes running as the current Windows user. Open **Playlists → Local API access → Generate API access key** to issue a capability and copy it to the clipboard. Keys are held only for the current app run; generate a new key after restarting, or revoke all issued keys from the same panel. By default, API clients can manage only playlists created using their own capability. The app's **Allow other local API clients to manage this playlist** checkbox explicitly shares the selected playlist with other issued clients.
+
+Each connection sends one versioned JSON request and receives one JSON response. A four-byte length prefix in big-endian byte order precedes each JSON message; messages are limited to 64 KiB. Requests use protocol `version: 1`, the issued `capability`, and an operation:
+
+| Operation | Additional fields | Purpose |
+| --- | --- | --- |
+| `list` | — | List playlists visible to this capability |
+| `inspect` | `playlistId` | Inspect a visible playlist and its current-folder-relative members |
+| `create` | `name`, optional `endMode` | Create an owned External playlist |
+| `rename` | `playlistId`, `name` | Rename an owned or explicitly shared playlist |
+| `delete` | `playlistId` | Delete an owned or explicitly shared custom playlist |
+| `add` / `remove` | `playlistId`, `paths` | Idempotently update folder-relative membership |
+| `set_end_mode` | `playlistId`, `endMode` | Set `LoopPlaylist` or `AppendNonPlaylistItems` |
+| `cleanup_stale` | `playlistId` | Explicitly remove stale membership records |
+
+Malformed, unauthorized, stale-file, and out-of-scope requests return explicit error codes. The API only operates on the currently loaded folder; clients never need to compute hashes. No push notifications are sent; clients can poll with `list` or `inspect`.
+
 ### Keyboard shortcuts
 
 | Key | Action |
@@ -67,6 +94,7 @@ The media filter button cycles between images only, videos only, and both. Setti
 | `M` | Mute or unmute the current video |
 | `E` | Reveal the current file in File Explorer |
 | `Q` | Show or hide the queue preview |
+| `Shift` + `F` | Add or remove the current item from Favorites (not in text inputs) |
 | `Escape` | Close settings or exit fullscreen |
 
 Video playback uses the Windows media stack. The formats available to play therefore depend on the codecs supported by the Windows installation.
@@ -112,7 +140,7 @@ Run the xUnit test project:
 dotnet test tests\diashow.Tests.csproj --configuration Release --no-restore
 ```
 
-The tests cover playlist ordering and navigation, media discovery, settings persistence, image decoding, and Explorer integration.
+The tests cover playlist ordering and navigation, persisted playlist isolation and stale detection, named-pipe authorization, media discovery, settings persistence, image decoding, and Explorer integration.
 
 UI tests use FlaUI to launch the application and interact with its Windows UI Automation tree:
 

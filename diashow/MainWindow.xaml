@@ -49,6 +49,42 @@
                 <Setter Property="FontSize" Value="17"/>
                 <Setter Property="Margin" Value="3"/>
             </Style>
+            <Style x:Key="FavoriteToggleStyle" TargetType="ToggleButton">
+                <Setter Property="Width" Value="38"/>
+                <Setter Property="Height" Value="38"/>
+                <Setter Property="Margin" Value="3"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="FontSize" Value="20"/>
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="Background" Value="#33FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#55FFFFFF"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="12">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#66FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter Property="Foreground" Value="#FFFFD45C"/>
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter Property="BorderBrush" Value="White"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <Style x:Key="PreviewButton" TargetType="Button">
                 <Setter Property="Background" Value="Transparent"/>
                 <Setter Property="BorderBrush" Value="Transparent"/>
@@ -230,11 +266,14 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="ItemCounter" Foreground="White" FontSize="16"
                            Margin="0,0,12,0"/>
                 <TextBlock x:Name="PathBanner" Grid.Column="1" Foreground="White" FontSize="16"
                            TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="ActivePlaylistIndicator" Grid.Column="2" Foreground="#FFFFD45C"
+                           FontSize="14" Margin="12,0,0,0" Visibility="Collapsed"/>
             </Grid>
         </Border>
         <Button x:Name="AccessToast" Background="#E0A51D1D" BorderThickness="0"
@@ -326,9 +365,15 @@
                             AutomationProperties.Name="Toggle fullscreen" Click="Fullscreen_Click"/>
                 </StackPanel>
                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <ToggleButton x:Name="FavoriteToggle" Style="{StaticResource FavoriteToggleStyle}"
+                                  Content="&#xE734;" FontFamily="Segoe MDL2 Assets"
+                                  IsEnabled="False" Click="FavoriteToggle_Click"/>
                     <Button x:Name="VideoToggle" Style="{StaticResource CompactIconButton}"
                             FontFamily="Segoe MDL2 Assets" ToolTip="Cycle media filter"
                             AutomationProperties.Name="Cycle media filter" Click="VideoToggle_Click"/>
+                    <Button x:Name="PlaylistPanelButton" Style="{StaticResource CompactIconButton}"
+                            Content="&#xE8F1;" FontFamily="Segoe MDL2 Assets"
+                            Click="PlaylistPanelButton_Click"/>
                     <Button x:Name="SettingsButton" Style="{StaticResource CompactIconButton}" Content="&#xE713;"
                             FontFamily="Segoe MDL2 Assets" ToolTip="Settings"
                             AutomationProperties.Name="Settings" Click="Settings_Click"/>
@@ -410,6 +455,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Text="Space" Foreground="White" Margin="0,2,16,2"/>
                     <TextBlock x:Name="PauseOrResumeShortcut" Grid.Column="1" Text="Pause or resume" Foreground="#FFCCCCCC" Margin="0,2" TextWrapping="Wrap"/>
@@ -429,11 +475,65 @@
                     <TextBlock x:Name="RevealShortcut" Grid.Row="7" Grid.Column="1" Text="Reveal current file in Explorer" Foreground="#FFCCCCCC" Margin="0,2" TextWrapping="Wrap"/>
                     <TextBlock Grid.Row="8" Text="Q" Foreground="White" Margin="0,2,16,2"/>
                     <TextBlock x:Name="QueuePreviewShortcut" Grid.Row="8" Grid.Column="1" Text="Show or hide queue preview" Foreground="#FFCCCCCC" Margin="0,2" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="9" Text="Shift+F" Foreground="White" Margin="0,2,16,2"/>
+                    <TextBlock x:Name="FavoriteShortcut" Grid.Row="9" Grid.Column="1" Text="Add or remove the current item from Favorites" Foreground="#FFCCCCCC" Margin="0,2" TextWrapping="Wrap"/>
                 </Grid>
                 <Button x:Name="ChooseFolderSettingsButton" Style="{StaticResource OverlayButton}" Content="Choose folder..." Click="ChooseFolder_Click" Margin="0,0,0,8"/>
                 <Button x:Name="CloseSettingsButton" Style="{StaticResource OverlayButton}" Content="Close" Click="SaveSettings_Click"/>
                 <TextBlock x:Name="VersionLabel" Foreground="#99FFFFFF" FontSize="12"
                            HorizontalAlignment="Center" Margin="0,12,0,0"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+        <Border x:Name="PlaylistPanel" Background="#F01D1D24" Padding="20"
+                Width="390" HorizontalAlignment="Left" VerticalAlignment="Top"
+                MaxHeight="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=ActualHeight}"
+                Visibility="Collapsed" Panel.ZIndex="4">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <TextBlock x:Name="PlaylistPanelTitle" Foreground="White" FontSize="22" Margin="0,0,0,12"/>
+                    <ListBox x:Name="PlaylistList" Height="160" Margin="0,0,0,12"
+                             DisplayMemberPath="Name" SelectedValuePath="Id"
+                             SelectionChanged="PlaylistList_SelectionChanged"
+                             AutomationProperties.Name="Playlists"/>
+                    <TextBlock x:Name="PlaylistNameLabel" Foreground="White"/>
+                    <TextBox x:Name="PlaylistNameBox" Margin="0,4,0,8"
+                             AutomationProperties.Name="Playlist name"/>
+                    <WrapPanel Margin="0,0,0,10">
+                        <Button x:Name="NewPlaylistButton" Style="{StaticResource OverlayButton}"
+                                Click="NewPlaylist_Click" Margin="0,0,6,6"/>
+                        <Button x:Name="RenamePlaylistButton" Style="{StaticResource OverlayButton}"
+                                Click="RenamePlaylist_Click" Margin="0,0,6,6"/>
+                        <Button x:Name="DeletePlaylistButton" Style="{StaticResource OverlayButton}"
+                                Click="DeletePlaylist_Click" Margin="0,0,6,6"/>
+                        <Button x:Name="CleanupStaleEntriesButton" Style="{StaticResource OverlayButton}"
+                                Click="CleanupStaleEntries_Click" Margin="0,0,6,6"/>
+                        <Button x:Name="ActivatePlaylistButton" Style="{StaticResource OverlayButton}"
+                                Click="ActivatePlaylist_Click" Margin="0,0,6,6"/>
+                    </WrapPanel>
+                    <TextBlock x:Name="PlaylistEndModeLabel" Foreground="White"/>
+                    <ComboBox x:Name="PlaylistEndModeBox" Margin="0,4,0,8"
+                              SelectionChanged="PlaylistEndModeBox_SelectionChanged"
+                              AutomationProperties.Name="When playlist ends">
+                        <ComboBoxItem x:Name="LoopPlaylistItem" Tag="LoopPlaylist"/>
+                        <ComboBoxItem x:Name="AppendNonPlaylistItemsItem" Tag="AppendNonPlaylistItems"/>
+                    </ComboBox>
+                    <CheckBox x:Name="SharePlaylistBox" Margin="0,0,0,10"
+                              Checked="SharePlaylistBox_Changed"
+                              Unchecked="SharePlaylistBox_Changed"/>
+                    <TextBlock x:Name="ApiAccessLabel" Foreground="White" FontSize="17" Margin="0,8,0,6"/>
+                    <WrapPanel Margin="0,0,0,6">
+                        <Button x:Name="GenerateApiCapabilityButton" Style="{StaticResource OverlayButton}"
+                                Click="GenerateApiCapability_Click" Margin="0,0,6,6"/>
+                        <Button x:Name="RevokeApiCapabilitiesButton" Style="{StaticResource OverlayButton}"
+                                Click="RevokeApiCapabilities_Click" Margin="0,0,6,6"/>
+                    </WrapPanel>
+                    <TextBox x:Name="ApiCapabilityBox" IsReadOnly="True" TextWrapping="Wrap"
+                             Visibility="Collapsed" AutomationProperties.Name="API access key"/>
+                    <TextBlock x:Name="ApiCapabilityStatus" Foreground="#FFCCCCCC" TextWrapping="Wrap"
+                               Margin="0,6,0,10"/>
+                    <Button x:Name="ClosePlaylistPanelButton" Style="{StaticResource OverlayButton}"
+                            Click="ClosePlaylistPanel_Click"/>
                 </StackPanel>
             </ScrollViewer>
         </Border>
