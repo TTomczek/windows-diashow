@@ -10,13 +10,18 @@ public sealed class Playlist
     private PlaybackOrder _order;
     private SortDirection _direction;
     private MediaFilter _mediaFilter;
+    private HashSet<string>? _scopePaths;
+    private PlaylistEndMode _endMode;
+    private bool _appendRemainderStarted;
 
     public MediaItem? Current => _historyIndex >= 0 && _historyIndex < _history.Count ? _history[_historyIndex] : null;
     public int CurrentPosition => _historyIndex >= 0
-        ? _history.Take(_historyIndex + 1).Count(item => IsIncluded(item.Kind))
+        ? _history.Take(_historyIndex + 1).Count(IsVisibleInActivePlaylist)
         : 0;
     public int TotalCount => Filtered().Count;
     public bool CanGoBack => _historyIndex > 0;
+    public bool IsPlaylistActive => _scopePaths is not null;
+    public IReadOnlyList<MediaItem> Items => _all;
     public IEnumerable<MediaItem> PreloadCandidates(int count) =>
         new[] { Current }.Concat(_unseen).Where(x => x is not null).Take(Math.Max(0, count) + 1)!;
 
@@ -24,7 +29,7 @@ public sealed class Playlist
         _history
             .Take(Math.Max(0, _historyIndex))
             .Reverse()
-            .Where(item => IsIncluded(item.Kind))
+            .Where(IsVisibleInActivePlaylist)
             .Take(Math.Max(0, count))
             .ToArray();
 
@@ -37,7 +42,7 @@ public sealed class Playlist
         return _history
             .Skip(Math.Max(0, _historyIndex + 1))
             .Concat(_unseen)
-            .Where(item => IsIncluded(item.Kind))
+            .Where(IsVisibleInActivePlaylist)
             .Take(amount)
             .ToArray();
     }
@@ -100,6 +105,31 @@ public sealed class Playlist
         RebuildUnseen();
     }
 
+    public void SetActivePlaylist(
+        IEnumerable<string>? paths,
+        PlaylistEndMode endMode = PlaylistEndMode.LoopPlaylist,
+        bool resetHistory = true)
+    {
+        _scopePaths = paths?.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _endMode = endMode;
+        if (resetHistory)
+        {
+            _history.Clear();
+            _historyIndex = -1;
+            _appendRemainderStarted = false;
+        }
+        RebuildUnseen();
+    }
+
+    public void ClearActivePlaylist()
+    {
+        _scopePaths = null;
+        _appendRemainderStarted = false;
+        _history.Clear();
+        _historyIndex = -1;
+        RebuildUnseen();
+    }
+
     public void SetOptions(
         PlaybackOrder order,
         bool includeVideos,
@@ -136,6 +166,30 @@ public sealed class Playlist
     {
         if (_historyIndex < _history.Count - 1)
             return _history[++_historyIndex];
+
+        if (_unseen.Count == 0)
+        {
+            if (_scopePaths is not null && _endMode == PlaylistEndMode.AppendNonPlaylistItems &&
+                !_appendRemainderStarted)
+            {
+                _appendRemainderStarted = true;
+                RebuildUnseen();
+            }
+            else if (_scopePaths is not null && _appendRemainderStarted)
+            {
+                _scopePaths = null;
+                _appendRemainderStarted = false;
+                _history.Clear();
+                _historyIndex = -1;
+                RebuildUnseen();
+            }
+            else if (_scopePaths is not null)
+            {
+                _history.Clear();
+                _historyIndex = -1;
+                RebuildUnseen();
+            }
+        }
 
         if (_unseen.Count == 0)
         {
@@ -191,8 +245,17 @@ public sealed class Playlist
     }
 
     private List<MediaItem> Filtered() => _all
-        .Where(item => IsIncluded(item.Kind))
+        .Where(item => IsIncluded(item.Kind) && IsInActiveScope(item))
         .ToList();
+
+    private bool IsVisibleInActivePlaylist(MediaItem item) =>
+        IsIncluded(item.Kind) && IsInActiveScope(item);
+
+    private bool IsInActiveScope(MediaItem item) =>
+        _scopePaths is null ||
+        (_appendRemainderStarted
+            ? !_scopePaths.Contains(item.Path)
+            : _scopePaths.Contains(item.Path));
 
     private bool IsIncluded(MediaKind kind) =>
         _mediaFilter switch
